@@ -82,7 +82,7 @@ class TestEnhancerService:
         ) as mock_client_class:
             from faceless.services.enhancer_service import EnhancerService
 
-            service = EnhancerService()
+            EnhancerService()
             mock_client_class.assert_called_once()
 
     def test_enhance_script_success(

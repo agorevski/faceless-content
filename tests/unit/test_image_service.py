@@ -80,7 +80,7 @@ class TestImageService:
         ) as mock_client_class:
             from faceless.services.image_service import ImageService
 
-            service = ImageService()
+            ImageService()
             mock_client_class.assert_called_once()
 
     def test_generate_for_scene_success(

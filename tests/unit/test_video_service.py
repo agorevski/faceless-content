@@ -146,9 +146,7 @@ class TestVideoService:
                 enable_ken_burns=False,
             )
 
-            # Check that loop filter is used instead of zoompan
-            call_args = mock_run.call_args[0][0]
-            filter_arg = [a for a in call_args if "filter_complex" in str(call_args)]
+            # Check that mock was called (loop filter used instead of zoompan)
             assert mock_run.called
 
     def test_create_scene_video_missing_image(

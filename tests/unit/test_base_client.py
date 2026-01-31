@@ -241,7 +241,7 @@ class TestBaseHTTPClient:
         mock_httpx_client.return_value.request.return_value = mock_response
 
         client = BaseHTTPClient(base_url="https://api.example.com")
-        response = client._put("/test", json={"key": "updated"})
+        client._put("/test", json={"key": "updated"})
 
         client._client.request.assert_called_with(
             "PUT", "/test", json={"key": "updated"}
@@ -257,7 +257,7 @@ class TestBaseHTTPClient:
         mock_httpx_client.return_value.request.return_value = mock_response
 
         client = BaseHTTPClient(base_url="https://api.example.com")
-        response = client._delete("/test")
+        client._delete("/test")
 
         client._client.request.assert_called_with("DELETE", "/test")
 

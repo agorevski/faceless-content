@@ -82,7 +82,7 @@ class TestTTSService:
         ) as mock_client_class:
             from faceless.services.tts_service import TTSService
 
-            service = TTSService()
+            TTSService()
             mock_client_class.assert_called_once()
 
     def test_generate_for_scene_success(
@@ -144,7 +144,6 @@ class TestTTSService:
         self, tts_service, mock_client, mock_settings, sample_script, tmp_path: Path
     ) -> None:
         """Test audio generation for entire script."""
-        audio_dir = tmp_path / "audio" / sample_script.safe_title
         mock_settings.get_audio_dir.return_value = tmp_path / "audio"
 
         results = tts_service.generate_for_script(script=sample_script)

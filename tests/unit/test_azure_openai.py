@@ -257,7 +257,7 @@ class TestAzureOpenAIClient:
         client = AzureOpenAIClient()
         client.generate_image = MagicMock(return_value=b"image_data")
 
-        result = client.generate_image_for_platform("A sunset", Platform.YOUTUBE)
+        client.generate_image_for_platform("A sunset", Platform.YOUTUBE)
 
         client.generate_image.assert_called_once()
         call_args = client.generate_image.call_args

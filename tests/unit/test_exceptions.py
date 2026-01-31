@@ -12,7 +12,6 @@ Tests cover:
 - Rate limiting errors
 """
 
-import pytest
 
 from faceless.core.exceptions import (
     AzureOpenAIError,

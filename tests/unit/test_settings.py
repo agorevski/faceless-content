@@ -9,9 +9,6 @@ Tests cover:
 """
 
 from pathlib import Path
-from unittest.mock import patch
-
-import pytest
 
 from faceless.core.enums import Niche, Voice
 
@@ -57,7 +54,7 @@ class TestAzureOpenAISettings:
 
         settings = AzureOpenAISettings(
             endpoint="https://test.openai.azure.com/",
-            api_key="test-key",
+            AZURE_OPENAI_API_KEY="test-key",
         )
         assert settings.is_configured is True
 
@@ -65,7 +62,7 @@ class TestAzureOpenAISettings:
         """Test is_configured returns False when endpoint missing."""
         from faceless.config.settings import AzureOpenAISettings
 
-        settings = AzureOpenAISettings(api_key="test-key")
+        settings = AzureOpenAISettings(AZURE_OPENAI_API_KEY="test-key")
         assert settings.is_configured is False
 
     def test_is_configured_false_no_key(self) -> None:
