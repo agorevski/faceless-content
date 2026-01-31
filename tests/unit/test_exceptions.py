@@ -12,7 +12,6 @@ Tests cover:
 - Rate limiting errors
 """
 
-
 from faceless.core.exceptions import (
     AzureOpenAIError,
     CheckpointError,
