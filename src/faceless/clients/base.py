@@ -19,7 +19,7 @@ from tenacity import (
 
 from faceless.config import get_settings
 from faceless.core.exceptions import ClientError, RateLimitError
-from faceless.utils.logging import LoggerMixin, get_logger
+from faceless.utils.logging import LoggerMixin
 
 T = TypeVar("T")
 
@@ -180,7 +180,7 @@ class BaseHTTPClient(LoggerMixin):
         """
         response = self._post(path, json=data, **kwargs)
         response.raise_for_status()
-        return response.json()
+        return cast(dict[str, Any], response.json())
 
     def _get_json(self, path: str, **kwargs: Any) -> dict[str, Any]:
         """
@@ -195,7 +195,7 @@ class BaseHTTPClient(LoggerMixin):
         """
         response = self._get(path, **kwargs)
         response.raise_for_status()
-        return response.json()
+        return cast(dict[str, Any], response.json())
 
     def _post_binary(
         self,
@@ -245,14 +245,16 @@ def with_retry(
         ... def fetch_data():
         ...     return make_request()
     """
-    logger = get_logger("retry")
+    import logging
+
+    std_logger = logging.getLogger("retry")
 
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @retry(
             stop=stop_after_attempt(max_attempts),
             wait=wait_exponential(multiplier=1, min=min_wait, max=max_wait),
             retry=retry_if_exception_type(retry_exceptions),
-            before_sleep=before_sleep_log(logger, log_level=20),  # INFO level
+            before_sleep=before_sleep_log(std_logger, log_level=20),  # INFO level
             reraise=True,
         )
         def wrapper(*args: Any, **kwargs: Any) -> T:

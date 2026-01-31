@@ -39,7 +39,7 @@ NicheArg = Annotated[
 ]
 
 PlatformOption = Annotated[
-    list[Platform],
+    list[Platform] | None,
     typer.Option(
         "--platform",
         "-p",

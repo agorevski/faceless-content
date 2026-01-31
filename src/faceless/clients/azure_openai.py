@@ -9,7 +9,7 @@ This module provides a client for interacting with Azure OpenAI services:
 
 import base64
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -278,7 +278,8 @@ class AzureOpenAIClient(BaseHTTPClient):
                 self._handle_error_response(response, "Chat completion")
 
             result = response.json()
-            return result["choices"][0]["message"]["content"]
+            content: str = result["choices"][0]["message"]["content"]
+            return content
 
         except AzureOpenAIError:
             raise
@@ -321,7 +322,7 @@ class AzureOpenAIClient(BaseHTTPClient):
             response_format={"type": "json_object"},
         )
 
-        return json.loads(response_text)
+        return cast(dict[str, Any], json.loads(response_text))
 
     # =========================================================================
     # Text-to-Speech
