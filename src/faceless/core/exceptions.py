@@ -236,7 +236,7 @@ class ImageGenerationError(GenerationError):
         scene_number: int | None = None,
         api_error: str | None = None,
     ) -> None:
-        details = {}
+        details: dict[str, Any] = {}
         if prompt:
             details["prompt"] = prompt[:200]  # Truncate long prompts
         if scene_number is not None:
@@ -288,7 +288,7 @@ class VideoAssemblyError(GenerationError):
         input_files: list[str] | None = None,
         ffmpeg_error: str | None = None,
     ) -> None:
-        details = {}
+        details: dict[str, Any] = {}
         if stage:
             details["stage"] = stage
         if input_files:
@@ -329,7 +329,7 @@ class AzureOpenAIError(ClientError):
         error_code: str | None = None,
         response_body: str | None = None,
     ) -> None:
-        details = {}
+        details: dict[str, Any] = {}
         if status_code:
             details["status_code"] = status_code
         if error_code:
@@ -362,7 +362,7 @@ class RedditError(ClientError):
         subreddit: str | None = None,
         status_code: int | None = None,
     ) -> None:
-        details = {}
+        details: dict[str, Any] = {}
         if subreddit:
             details["subreddit"] = subreddit
         if status_code:
@@ -402,7 +402,7 @@ class FFmpegError(ExternalToolError):
         return_code: int | None = None,
         stderr: str | None = None,
     ) -> None:
-        details = {}
+        details: dict[str, Any] = {}
         if command:
             # Don't include full command in details (could be very long)
             details["command_preview"] = " ".join(command[:5]) + "..."
@@ -432,7 +432,7 @@ class RateLimitError(ClientError):
         retry_after: int | None = None,
         service: str | None = None,
     ) -> None:
-        details = {}
+        details: dict[str, Any] = {}
         if retry_after:
             details["retry_after"] = retry_after
         if service:

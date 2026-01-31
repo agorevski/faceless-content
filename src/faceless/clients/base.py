@@ -6,7 +6,7 @@ implementing common patterns like retries, timeouts, and structured logging.
 """
 
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 import httpx
 from tenacity import (
