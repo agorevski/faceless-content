@@ -1,0 +1,200 @@
+# Faceless Content Pipeline - Cline Rules
+
+## Project Overview
+This is a Python-based content production pipeline for creating "faceless" videos (YouTube/TikTok) with AI-generated images, text-to-speech narration, and automated video assembly. It supports three content niches: scary-stories, finance, and luxury.
+
+## Technology Stack
+- **Language:** Python 3.10+ (3.11+ recommended)
+- **Package Management:** Hatchling build system, pip with pyproject.toml
+- **APIs:** Azure OpenAI (GPT-Image-1 for images, GPT-4o for chat, GPT-4o-mini-tts for TTS), optional ElevenLabs
+- **Video Processing:** FFmpeg
+- **Content Sources:** Reddit API for story scraping
+- **CLI Framework:** Typer with Rich for terminal output
+- **HTTP Client:** httpx (async-capable)
+- **Configuration:** Pydantic Settings with python-dotenv
+- **Logging:** structlog for structured logging
+- **Testing:** pytest with pytest-asyncio, pytest-cov, pytest-mock
+
+## Directory Structure
+```
+faceless-content/
+├── src/faceless/           # Main package (installable via pip install -e .)
+│   ├── cli/                # Typer-based CLI commands
+│   │   ├── __init__.py
+│   │   └── commands.py     # CLI command definitions
+│   ├── clients/            # External API clients
+│   │   ├── base.py         # Base client class
+│   │   └── azure_openai.py # Azure OpenAI client
+│   ├── config/             # Pydantic settings configuration
+│   ├── core/               # Domain models and types
+│   │   ├── enums.py        # Enums (Niche, Platform, etc.)
+│   │   ├── exceptions.py   # Custom exception classes
+│   │   └── models.py       # Pydantic data models
+│   ├── services/           # Business logic layer
+│   │   ├── enhancer_service.py
+│   │   ├── image_service.py
+│   │   ├── tts_service.py
+│   │   └── video_service.py
+│   ├── pipeline/           # Pipeline orchestration
+│   ├── utils/              # Utilities (logging, helpers)
+│   ├── __init__.py
+│   └── __main__.py         # Entry point for python -m faceless
+├── tests/                  # Test suite
+│   ├── unit/               # Unit tests
+│   ├── conftest.py         # Pytest fixtures
+│   └── __init__.py
+├── pipeline/               # Legacy pipeline code (excluded from linting)
+├── documentation/          # Project documentation
+├── shared/                 # Shared resources
+│   ├── templates/          # Video templates
+│   ├── prompts/            # Prompt templates
+│   └── music/              # Background music
+├── output/                 # Generated content (gitignored)
+├── pyproject.toml          # Project configuration and dependencies
+├── .env                    # Environment variables (gitignored)
+├── .env.example            # Environment variable template
+└── .pre-commit-config.yaml # Pre-commit hooks configuration
+```
+
+## Coding Conventions
+
+### Python Style
+- Follow PEP 8 style guidelines (enforced by ruff)
+- Use Black for code formatting (line length: 88)
+- Use type hints for ALL function signatures (enforced by mypy)
+- Use docstrings for public functions and classes
+- Prefer descriptive variable names over abbreviations
+
+### Architecture Patterns
+- **Clients:** Handle external API communication (inherit from base client)
+- **Services:** Business logic layer that uses clients
+- **Models:** Pydantic models for data validation and serialization
+- **CLI:** Thin layer using Typer that calls services
+
+### Import Style
+- Use absolute imports: `from faceless.core.models import Script`
+- Group imports: stdlib, third-party, local (enforced by ruff isort)
+
+### Error Handling
+- Use custom exceptions from `faceless.core.exceptions`
+- Use structlog for logging with context
+- Rich console output for user-facing messages (✅ success, ❌ error, ⚠️ warning)
+- Use tenacity for retry logic on API calls
+
+### File Naming
+- Script files: `{safe-title}_script.json`
+- Image files: `scene_{number}_{platform}.png`
+- Audio files: `scene_{number}.mp3`
+- Video output: `{niche}_{title}_{platform}.mp4`
+
+## Configuration
+
+### Environment Variables
+- Configuration via `.env` file (copy from `.env.example`)
+- Managed by Pydantic Settings with automatic validation
+- NEVER commit real API keys to the repository
+
+### Required Environment Variables
+```env
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_API_KEY=your-api-key
+AZURE_OPENAI_IMAGE_DEPLOYMENT=gpt-image-1
+AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-4o
+AZURE_OPENAI_TTS_DEPLOYMENT=gpt-4o-mini-tts
+```
+
+## Script JSON Format
+```json
+{
+  "title": "Story Title",
+  "niche": "scary-stories",
+  "source": "r/subreddit",
+  "author": "username",
+  "visual_style": {
+    "environment": "Dark foggy setting",
+    "color_mood": "Deep blues, grays"
+  },
+  "scenes": [
+    {
+      "scene_number": 1,
+      "narration": "Text to be spoken...",
+      "image_prompt": "Image generation prompt...",
+      "duration_estimate": 15.0
+    }
+  ]
+}
+```
+
+## CLI Usage
+The CLI is installed as `faceless` command via pip:
+
+```bash
+# Install in development mode
+pip install -e ".[dev]"
+
+# Main commands
+faceless generate NICHE      # Generate video content
+faceless validate            # Validate configuration
+faceless init                # Initialize project directories
+faceless info                # Show pipeline configuration
+
+# Generate command options
+faceless generate scary-stories -c 3 -p youtube --enhance
+  -c, --count INTEGER       Number of videos [default: 1]
+  -p, --platform            Target platform(s) [default: youtube, tiktok]
+  -s, --script PATH         Path to existing script
+  -e, --enhance             Enhance scripts with GPT
+  -t, --thumbnails          Generate thumbnails [default: True]
+  --subtitles               Generate subtitle files [default: True]
+```
+
+## Development Commands
+
+```bash
+# Install with dev dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# Run tests with coverage
+pytest --cov=src/faceless --cov-report=html
+
+# Linting
+ruff check src/ tests/
+
+# Type checking
+mypy src/
+
+# Format code
+ruff format src/ tests/
+
+# Install pre-commit hooks
+pre-commit install
+```
+
+## Important Notes
+1. FFmpeg must be installed and in PATH for video processing
+2. Azure OpenAI requires valid endpoint, key, and deployment names
+3. Image generation may be rejected by content filters - adjust prompts accordingly
+4. Checkpointing system allows resuming failed runs
+5. TikTok cuts are automatically generated from YouTube videos
+6. The `pipeline/` directory contains legacy code and is excluded from linting
+
+## Testing
+- Tests are in `tests/` directory using pytest
+- Use `pytest-asyncio` for async test support
+- Use `pytest-mock` and `respx` for mocking
+- Minimum 70% coverage required (configured in pyproject.toml)
+- Markers: `@pytest.mark.unit`, `@pytest.mark.integration`, `@pytest.mark.slow`
+
+## Dependencies
+Core dependencies (from pyproject.toml):
+- `pydantic` / `pydantic-settings` - Data validation and settings
+- `httpx` - Async HTTP client
+- `tenacity` - Retry logic
+- `structlog` - Structured logging
+- `typer[all]` - CLI framework
+- `rich` - Terminal formatting
+- `python-dotenv` - Environment variable loading
+- `ffmpeg` - External binary for video processing

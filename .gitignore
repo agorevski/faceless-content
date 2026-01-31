@@ -1,1 +1,224 @@
-**/__pycache__/
+# =============================================================================
+# FACELESS CONTENT PIPELINE - .gitignore
+# =============================================================================
+
+# =============================================================================
+# Python
+# =============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+coverage_html/
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+pytestdebug.log
+
+# Type checkers
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# =============================================================================
+# Environment & Secrets
+# =============================================================================
+.env
+.env.*
+!.env.example
+.envrc
+*.pem
+*.key
+secrets.json
+credentials.json
+
+# =============================================================================
+# Virtual Environments
+# =============================================================================
+.venv/
+venv/
+ENV/
+env/
+.conda/
+conda-env/
+
+# =============================================================================
+# IDEs & Editors
+# =============================================================================
+# VS Code
+.vscode/
+*.code-workspace
+
+# PyCharm / JetBrains
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*.swn
+*~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+
+# =============================================================================
+# OS Generated Files
+# =============================================================================
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+*~
+
+# =============================================================================
+# Generated Content (Output)
+# =============================================================================
+# Output directories for generated videos, images, audio
+output/
+scary-stories/
+finance/
+luxury/
+
+# Specific output file patterns
+*.mp4
+*.mp3
+*.wav
+*.png
+*.jpg
+*.jpeg
+*.webp
+!shared/**/*.png
+!shared/**/*.jpg
+!documentation/**/*.png
+!documentation/**/*.jpg
+
+# Checkpoint files
+.checkpoints/
+*_checkpoint.json
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+temp/
+tmp/
+
+# =============================================================================
+# Logs
+# =============================================================================
+logs/
+*.log
+log/
+
+# =============================================================================
+# Build & Distribution
+# =============================================================================
+build/
+dist/
+*.egg-info/
+.hatch/
+
+# =============================================================================
+# Documentation Build
+# =============================================================================
+docs/_build/
+site/
+
+# =============================================================================
+# Jupyter Notebooks
+# =============================================================================
+.ipynb_checkpoints/
+*.ipynb
+
+# =============================================================================
+# FFmpeg & Media Processing
+# =============================================================================
+*.ffindex
+concat_list.txt
+*_list.txt
+
+# =============================================================================
+# Legacy Pipeline (to be removed after migration)
+# =============================================================================
+# Keep the pipeline/ directory in version control during migration
+# but ignore any generated files within it
+pipeline/*.mp4
+pipeline/*.mp3
+pipeline/*.png
+pipeline/*.jpg
+
+# =============================================================================
+# Misc
+# =============================================================================
+*.bak
+*.orig
+.~lock.*
+*.lock
+!poetry.lock
+!package-lock.json
