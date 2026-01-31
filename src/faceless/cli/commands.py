@@ -5,7 +5,7 @@ This module defines all CLI commands using Typer.
 """
 
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich.console import Console
@@ -13,8 +13,8 @@ from rich.panel import Panel
 from rich.table import Table
 
 from faceless import __version__
-from faceless.core.enums import Niche, Platform
 from faceless.config import get_settings
+from faceless.core.enums import Niche, Platform
 from faceless.utils.logging import setup_logging
 
 # Create the main app
@@ -41,7 +41,8 @@ NicheArg = Annotated[
 PlatformOption = Annotated[
     list[Platform],
     typer.Option(
-        "--platform", "-p",
+        "--platform",
+        "-p",
         help="Target platform(s)",
     ),
 ]
@@ -49,7 +50,8 @@ PlatformOption = Annotated[
 CountOption = Annotated[
     int,
     typer.Option(
-        "--count", "-c",
+        "--count",
+        "-c",
         help="Number of videos to generate",
         min=1,
         max=10,
@@ -60,18 +62,21 @@ CountOption = Annotated[
 # Callbacks
 # =============================================================================
 
+
 def version_callback(value: bool) -> None:
     """Print version and exit."""
     if value:
         console.print(f"[bold blue]Faceless Content Pipeline[/] v{__version__}")
         raise typer.Exit()
 
+
 @app.callback()
 def main(
     version: Annotated[
         bool,
         typer.Option(
-            "--version", "-v",
+            "--version",
+            "-v",
             help="Show version and exit",
             callback=version_callback,
             is_eager=True,
@@ -96,19 +101,22 @@ def main(
     log_level = "DEBUG" if debug else settings.log_level
     setup_logging(level=log_level, json_format=settings.log_json_format)
 
+
 # =============================================================================
 # Generate Command
 # =============================================================================
+
 
 @app.command()
 def generate(
     niche: NicheArg,
     count: CountOption = 1,
-    platform: PlatformOption = [Platform.YOUTUBE, Platform.TIKTOK],
+    platform: PlatformOption = None,
     script: Annotated[
-        Optional[Path],
+        Path | None,
         typer.Option(
-            "--script", "-s",
+            "--script",
+            "-s",
             help="Path to existing script file",
             exists=True,
             file_okay=True,
@@ -125,14 +133,16 @@ def generate(
     enhance: Annotated[
         bool,
         typer.Option(
-            "--enhance", "-e",
+            "--enhance",
+            "-e",
             help="Enhance scripts with GPT for better engagement",
         ),
     ] = False,
     thumbnails: Annotated[
         bool,
         typer.Option(
-            "--thumbnails", "-t",
+            "--thumbnails",
+            "-t",
             help="Generate thumbnail variants",
         ),
     ] = True,
@@ -144,9 +154,10 @@ def generate(
         ),
     ] = True,
     music: Annotated[
-        Optional[Path],
+        Path | None,
         typer.Option(
-            "--music", "-m",
+            "--music",
+            "-m",
             help="Path to background music file",
             exists=True,
             file_okay=True,
@@ -170,11 +181,15 @@ def generate(
         # Process a specific script with enhancement
         faceless generate scary-stories -s path/to/script.json --enhance
     """
-    console.print(Panel.fit(
-        f"[bold blue]Generating {count} {niche.display_name} video(s)[/]\n"
-        f"Platforms: {', '.join(p.display_name for p in platform)}",
-        title="🎬 Faceless Content Pipeline",
-    ))
+    if platform is None:
+        platform = [Platform.YOUTUBE, Platform.TIKTOK]
+    console.print(
+        Panel.fit(
+            f"[bold blue]Generating {count} {niche.display_name} video(s)[/]\n"
+            f"Platforms: {', '.join(p.display_name for p in platform)}",
+            title="🎬 Faceless Content Pipeline",
+        )
+    )
 
     # Ensure output directories exist
     settings = get_settings()
@@ -193,36 +208,51 @@ def generate(
 
     steps = [
         ("Fetch/Load Scripts", "pending"),
-        ("Enhance Scripts" if enhance else "Skip Enhancement", "pending" if enhance else "skipped"),
+        (
+            "Enhance Scripts" if enhance else "Skip Enhancement",
+            "pending" if enhance else "skipped",
+        ),
         ("Generate Images", "pending"),
         ("Generate Audio", "pending"),
         ("Assemble Videos", "pending"),
-        ("Generate Thumbnails" if thumbnails else "Skip Thumbnails", "pending" if thumbnails else "skipped"),
-        ("Generate Subtitles" if subtitles else "Skip Subtitles", "pending" if subtitles else "skipped"),
+        (
+            "Generate Thumbnails" if thumbnails else "Skip Thumbnails",
+            "pending" if thumbnails else "skipped",
+        ),
+        (
+            "Generate Subtitles" if subtitles else "Skip Subtitles",
+            "pending" if subtitles else "skipped",
+        ),
     ]
 
     for step, status in steps:
-        table.add_row(step, f"[{'yellow' if status == 'pending' else 'dim'}]{status}[/]")
+        table.add_row(
+            step, f"[{'yellow' if status == 'pending' else 'dim'}]{status}[/]"
+        )
 
     console.print(table)
+
 
 # =============================================================================
 # Validate Command
 # =============================================================================
+
 
 @app.command()
 def validate(
     test_connections: Annotated[
         bool,
         typer.Option(
-            "--test-connections", "-t",
+            "--test-connections",
+            "-t",
             help="Test actual API connectivity",
         ),
     ] = False,
     niche: Annotated[
-        Optional[Niche],
+        Niche | None,
         typer.Option(
-            "--niche", "-n",
+            "--niche",
+            "-n",
             help="Validate for a specific niche",
         ),
     ] = None,
@@ -241,10 +271,12 @@ def validate(
         # Test API connections
         faceless validate --test-connections
     """
-    console.print(Panel.fit(
-        "[bold]Configuration Validation[/]",
-        title="🔍 Checking Configuration",
-    ))
+    console.print(
+        Panel.fit(
+            "[bold]Configuration Validation[/]",
+            title="🔍 Checking Configuration",
+        )
+    )
 
     settings = get_settings()
 
@@ -279,6 +311,7 @@ def validate(
 
     # Check FFmpeg
     import subprocess
+
     try:
         result = subprocess.run(
             ["ffmpeg", "-version"],
@@ -303,6 +336,7 @@ def validate(
 
         if azure_ok:
             from faceless.clients.azure_openai import AzureOpenAIClient
+
             try:
                 client = AzureOpenAIClient()
                 if client.test_connection():
@@ -318,19 +352,24 @@ def validate(
         console.print("\n[green]✓ Configuration is valid![/]")
         raise typer.Exit(0)
     else:
-        console.print("\n[red]✗ Configuration has issues. Fix them before running the pipeline.[/]")
+        console.print(
+            "\n[red]✗ Configuration has issues. Fix them before running the pipeline.[/]"
+        )
         raise typer.Exit(1)
+
 
 # =============================================================================
 # Init Command
 # =============================================================================
 
+
 @app.command()
 def init(
     niche: Annotated[
-        Optional[Niche],
+        Niche | None,
         typer.Option(
-            "--niche", "-n",
+            "--niche",
+            "-n",
             help="Initialize directories for a specific niche only",
         ),
     ] = None,
@@ -352,9 +391,11 @@ def init(
         for n in Niche:
             console.print(f"  [dim]{settings.get_output_dir(n)}[/]")
 
+
 # =============================================================================
 # Info Command
 # =============================================================================
+
 
 @app.command()
 def info() -> None:
@@ -365,10 +406,12 @@ def info() -> None:
     """
     settings = get_settings()
 
-    console.print(Panel.fit(
-        f"[bold blue]Faceless Content Pipeline[/] v{__version__}",
-        title="ℹ️  Pipeline Info",
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold blue]Faceless Content Pipeline[/] v{__version__}",
+            title="ℹ️  Pipeline Info",
+        )
+    )
 
     # Settings table
     table = Table(title="Current Settings")
@@ -382,8 +425,12 @@ def info() -> None:
     table.add_row("Request Timeout", f"{settings.request_timeout}s")
     table.add_row("Retry Enabled", "Yes" if settings.enable_retry else "No")
     table.add_row("Max Retries", str(settings.max_retries))
-    table.add_row("Checkpointing", "Enabled" if settings.enable_checkpointing else "Disabled")
-    table.add_row("TTS Provider", "ElevenLabs" if settings.use_elevenlabs else "Azure OpenAI")
+    table.add_row(
+        "Checkpointing", "Enabled" if settings.enable_checkpointing else "Disabled"
+    )
+    table.add_row(
+        "TTS Provider", "ElevenLabs" if settings.use_elevenlabs else "Azure OpenAI"
+    )
 
     console.print(table)
 
@@ -398,6 +445,7 @@ def info() -> None:
         voice_table.add_row(niche.display_name, voice.value, str(speed))
 
     console.print(voice_table)
+
 
 if __name__ == "__main__":
     app()

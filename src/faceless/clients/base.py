@@ -5,23 +5,24 @@ This module provides a base class for all HTTP clients in the application,
 implementing common patterns like retries, timeouts, and structured logging.
 """
 
-from typing import Any, TypeVar
 from collections.abc import Callable
+from typing import Any, TypeVar
 
 import httpx
 from tenacity import (
+    before_sleep_log,
     retry,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    before_sleep_log,
 )
 
 from faceless.config import get_settings
 from faceless.core.exceptions import ClientError, RateLimitError
-from faceless.utils.logging import get_logger, LoggerMixin
+from faceless.utils.logging import LoggerMixin, get_logger
 
 T = TypeVar("T")
+
 
 class BaseHTTPClient(LoggerMixin):
     """
@@ -216,6 +217,7 @@ class BaseHTTPClient(LoggerMixin):
         response = self._post(path, json=data, **kwargs)
         response.raise_for_status()
         return response.content
+
 
 def with_retry(
     max_attempts: int = 3,

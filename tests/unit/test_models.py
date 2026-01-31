@@ -8,25 +8,26 @@ Tests cover:
 - Job and Checkpoint models
 """
 
-import pytest
-from datetime import datetime
 from pathlib import Path
 from uuid import UUID
 
-from faceless.core.enums import Niche, Platform, JobStatus
+import pytest
+
+from faceless.core.enums import JobStatus, Niche, Platform
 from faceless.core.models import (
-    Scene,
-    Script,
-    VisualStyle,
+    Checkpoint,
     Job,
     JobConfig,
     JobResult,
-    Checkpoint,
+    Scene,
+    Script,
+    VisualStyle,
 )
 
 # =============================================================================
 # Scene Tests
 # =============================================================================
+
 
 class TestScene:
     """Tests for the Scene model."""
@@ -100,9 +101,11 @@ class TestScene:
         )
         assert scene.duration_estimate == 10.0
 
+
 # =============================================================================
 # VisualStyle Tests
 # =============================================================================
+
 
 class TestVisualStyle:
     """Tests for the VisualStyle model."""
@@ -134,9 +137,11 @@ class TestVisualStyle:
         style = VisualStyle()
         assert style.to_prompt_suffix() == ""
 
+
 # =============================================================================
 # Script Tests
 # =============================================================================
+
 
 class TestScript:
     """Tests for the Script model."""
@@ -223,9 +228,11 @@ class TestScript:
         assert loaded.niche == sample_script.niche
         assert len(loaded.scenes) == len(sample_script.scenes)
 
+
 # =============================================================================
 # Job Tests
 # =============================================================================
+
 
 class TestJob:
     """Tests for Job-related models."""
@@ -311,9 +318,11 @@ class TestJob:
         assert job.duration is not None
         assert job.duration >= 0
 
+
 # =============================================================================
 # Checkpoint Tests
 # =============================================================================
+
 
 class TestCheckpoint:
     """Tests for Checkpoint model."""

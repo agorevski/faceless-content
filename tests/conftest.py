@@ -4,8 +4,8 @@ Pytest configuration and fixtures for the Faceless Content Pipeline.
 This module provides common fixtures used across all tests.
 """
 
+from collections.abc import Generator
 from pathlib import Path
-from typing import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -17,12 +17,14 @@ from faceless.core.models import Scene, Script, VisualStyle
 # Path Fixtures
 # =============================================================================
 
+
 @pytest.fixture
 def temp_output_dir(tmp_path: Path) -> Path:
     """Create a temporary output directory."""
     output_dir = tmp_path / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir
+
 
 @pytest.fixture
 def temp_scripts_dir(temp_output_dir: Path) -> Path:
@@ -31,9 +33,11 @@ def temp_scripts_dir(temp_output_dir: Path) -> Path:
     scripts_dir.mkdir(parents=True, exist_ok=True)
     return scripts_dir
 
+
 # =============================================================================
 # Model Fixtures
 # =============================================================================
+
 
 @pytest.fixture
 def sample_scene() -> Scene:
@@ -44,6 +48,7 @@ def sample_scene() -> Scene:
         image_prompt="A dark Victorian house at night with fog",
         duration_estimate=15.0,
     )
+
 
 @pytest.fixture
 def sample_scenes() -> list[Scene]:
@@ -69,6 +74,7 @@ def sample_scenes() -> list[Scene]:
         ),
     ]
 
+
 @pytest.fixture
 def sample_visual_style() -> VisualStyle:
     """Create a sample visual style for testing."""
@@ -82,8 +88,11 @@ def sample_visual_style() -> VisualStyle:
         },
     )
 
+
 @pytest.fixture
-def sample_script(sample_scenes: list[Scene], sample_visual_style: VisualStyle) -> Script:
+def sample_script(
+    sample_scenes: list[Scene], sample_visual_style: VisualStyle
+) -> Script:
     """Create a sample script for testing."""
     return Script(
         title="The House at the End of the Street",
@@ -94,6 +103,7 @@ def sample_script(sample_scenes: list[Scene], sample_visual_style: VisualStyle) 
         visual_style=sample_visual_style,
     )
 
+
 @pytest.fixture
 def sample_script_json(sample_script: Script, temp_scripts_dir: Path) -> Path:
     """Save sample script to JSON and return path."""
@@ -101,9 +111,11 @@ def sample_script_json(sample_script: Script, temp_scripts_dir: Path) -> Path:
     sample_script.to_json_file(script_path)
     return script_path
 
+
 # =============================================================================
 # Mock Fixtures
 # =============================================================================
+
 
 @pytest.fixture
 def mock_settings() -> Generator[MagicMock, None, None]:
@@ -124,29 +136,35 @@ def mock_settings() -> Generator[MagicMock, None, None]:
         mock.return_value = settings
         yield settings
 
+
 @pytest.fixture
 def mock_httpx_client() -> Generator[MagicMock, None, None]:
     """Mock httpx.Client for HTTP tests."""
     with patch("httpx.Client") as mock:
         yield mock
 
+
 # =============================================================================
 # Platform/Niche Fixtures
 # =============================================================================
+
 
 @pytest.fixture(params=list(Niche))
 def all_niches(request: pytest.FixtureRequest) -> Niche:
     """Parametrized fixture for all niches."""
     return request.param
 
+
 @pytest.fixture(params=list(Platform))
 def all_platforms(request: pytest.FixtureRequest) -> Platform:
     """Parametrized fixture for all platforms."""
     return request.param
 
+
 # =============================================================================
 # Test Markers
 # =============================================================================
+
 
 def pytest_configure(config: pytest.Config) -> None:
     """Configure custom pytest markers."""

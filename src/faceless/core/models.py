@@ -12,23 +12,23 @@ Models are organized into:
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from faceless.core.enums import JobStatus, Niche, Platform, Voice
 
-
 # =============================================================================
 # Visual Style Models
 # =============================================================================
+
 
 class RecurringElement(BaseModel):
     """A visual element that appears consistently across scenes."""
 
     name: str = Field(..., description="Name of the recurring element")
     description: str = Field(..., description="Detailed visual description")
+
 
 class VisualStyle(BaseModel):
     """
@@ -66,9 +66,11 @@ class VisualStyle(BaseModel):
             parts.append(f"Textures: {self.texture}")
         return " | ".join(parts)
 
+
 # =============================================================================
 # Scene and Script Models
 # =============================================================================
+
 
 class Scene(BaseModel):
     """
@@ -107,6 +109,7 @@ class Scene(BaseModel):
     def estimated_duration_from_words(self) -> float:
         """Estimate duration based on word count (~150 words/minute)."""
         return self.word_count / 2.5  # 150 words per minute = 2.5 words per second
+
 
 class Script(BaseModel):
     """
@@ -170,6 +173,7 @@ class Script(BaseModel):
     def safe_title(self) -> str:
         """Filename-safe version of the title."""
         import re
+
         safe = re.sub(r"[^\w\s-]", "", self.title[:50])
         safe = re.sub(r"[-\s]+", "-", safe).strip("-")
         return safe.lower()
@@ -190,8 +194,9 @@ class Script(BaseModel):
     @classmethod
     def from_json_file(cls, path: Path) -> "Script":
         """Load script from a JSON file."""
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             import json
+
             data = json.load(f)
         return cls.model_validate(data)
 
@@ -199,6 +204,7 @@ class Script(BaseModel):
 # =============================================================================
 # Job Models
 # =============================================================================
+
 
 class JobConfig(BaseModel):
     """Configuration for a content generation job."""
@@ -229,6 +235,7 @@ class JobConfig(BaseModel):
         description="Background music file path",
     )
 
+
 class JobResult(BaseModel):
     """Results from a completed job."""
 
@@ -239,6 +246,7 @@ class JobResult(BaseModel):
     subtitle_paths: dict[str, Path] = Field(default_factory=dict)
     errors: list[str] = Field(default_factory=list)
     duration_seconds: float = Field(default=0.0)
+
 
 class Job(BaseModel):
     """
@@ -286,9 +294,11 @@ class Job(BaseModel):
         self.status = JobStatus.FAILED
         self.error_message = error
 
+
 # =============================================================================
 # Checkpoint Model
 # =============================================================================
+
 
 class Checkpoint(BaseModel):
     """
@@ -366,8 +376,9 @@ class Checkpoint(BaseModel):
     @classmethod
     def load(cls, path: Path) -> "Checkpoint":
         """Load checkpoint from file."""
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             import json
+
             data = json.load(f)
         return cls.model_validate(data)
 
@@ -375,6 +386,7 @@ class Checkpoint(BaseModel):
 # =============================================================================
 # Asset Models
 # =============================================================================
+
 
 class GeneratedImage(BaseModel):
     """Metadata for a generated image."""
@@ -386,6 +398,7 @@ class GeneratedImage(BaseModel):
     enhanced_prompt: str | None = None
     generated_at: datetime = Field(default_factory=datetime.now)
 
+
 class GeneratedAudio(BaseModel):
     """Metadata for generated audio."""
 
@@ -395,6 +408,7 @@ class GeneratedAudio(BaseModel):
     voice: Voice
     duration_seconds: float | None = None
     generated_at: datetime = Field(default_factory=datetime.now)
+
 
 class GeneratedVideo(BaseModel):
     """Metadata for a generated video segment or final video."""
@@ -406,6 +420,7 @@ class GeneratedVideo(BaseModel):
     is_final: bool = False
     generated_at: datetime = Field(default_factory=datetime.now)
 
+
 class Thumbnail(BaseModel):
     """Metadata for a generated thumbnail."""
 
@@ -414,6 +429,7 @@ class Thumbnail(BaseModel):
     prompt: str
     variant_number: int = 1
     generated_at: datetime = Field(default_factory=datetime.now)
+
 
 class SubtitleFile(BaseModel):
     """Metadata for generated subtitles."""

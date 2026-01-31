@@ -18,6 +18,7 @@ from typing import Any
 import structlog
 from structlog.types import Processor
 
+
 def setup_logging(
     level: str = "INFO",
     json_format: bool = False,
@@ -105,6 +106,7 @@ def setup_logging(
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
+
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
     """
     Get a structured logger instance.
@@ -121,6 +123,7 @@ def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
     """
     return structlog.get_logger(name)
 
+
 def bind_context(**kwargs: Any) -> None:
     """
     Bind context variables that will be included in all subsequent logs.
@@ -136,6 +139,7 @@ def bind_context(**kwargs: Any) -> None:
     """
     structlog.contextvars.bind_contextvars(**kwargs)
 
+
 def clear_context() -> None:
     """
     Clear all bound context variables.
@@ -145,6 +149,7 @@ def clear_context() -> None:
     """
     structlog.contextvars.clear_contextvars()
 
+
 def unbind_context(*keys: str) -> None:
     """
     Remove specific context variables.
@@ -153,6 +158,7 @@ def unbind_context(*keys: str) -> None:
         *keys: Keys to remove from context
     """
     structlog.contextvars.unbind_contextvars(*keys)
+
 
 class LoggerMixin:
     """
@@ -172,23 +178,29 @@ class LoggerMixin:
         """Get logger bound to this class."""
         return get_logger(self.__class__.__name__)
 
+
 # Convenience functions for quick logging without getting a logger first
+
 
 def log_info(message: str, **kwargs: Any) -> None:
     """Log an info message with optional context."""
     get_logger().info(message, **kwargs)
 
+
 def log_warning(message: str, **kwargs: Any) -> None:
     """Log a warning message with optional context."""
     get_logger().warning(message, **kwargs)
+
 
 def log_error(message: str, **kwargs: Any) -> None:
     """Log an error message with optional context."""
     get_logger().error(message, **kwargs)
 
+
 def log_debug(message: str, **kwargs: Any) -> None:
     """Log a debug message with optional context."""
     get_logger().debug(message, **kwargs)
+
 
 def log_exception(message: str, **kwargs: Any) -> None:
     """Log an exception with traceback."""

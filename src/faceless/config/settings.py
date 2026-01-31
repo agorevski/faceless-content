@@ -9,7 +9,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from faceless.core.enums import Niche, Voice
@@ -17,6 +17,7 @@ from faceless.core.enums import Niche, Voice
 # =============================================================================
 # Settings Classes
 # =============================================================================
+
 
 class AzureOpenAISettings(BaseSettings):
     """Azure OpenAI API configuration."""
@@ -251,7 +252,10 @@ class Settings(BaseSettings):
     def get_voice_settings(self, niche: Niche) -> tuple[Voice, float]:
         """Get voice and speed settings for a niche."""
         settings_map = {
-            Niche.SCARY_STORIES: (self.voice_scary_stories, self.voice_speed_scary_stories),
+            Niche.SCARY_STORIES: (
+                self.voice_scary_stories,
+                self.voice_speed_scary_stories,
+            ),
             Niche.FINANCE: (self.voice_finance, self.voice_speed_finance),
             Niche.LUXURY: (self.voice_luxury, self.voice_speed_luxury),
         }

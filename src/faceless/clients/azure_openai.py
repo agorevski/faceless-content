@@ -23,6 +23,7 @@ from faceless.core.exceptions import (
     TTSGenerationError,
 )
 
+
 class AzureOpenAIClient(BaseHTTPClient):
     """
     Client for Azure OpenAI API.
@@ -81,7 +82,10 @@ class AzureOpenAIClient(BaseHTTPClient):
             error_message = error_data.get("message", "Unknown error")
 
             # Check for content filter
-            if "content_filter" in error_code.lower() or "content" in error_message.lower():
+            if (
+                "content_filter" in error_code.lower()
+                or "content" in error_message.lower()
+            ):
                 raise ContentFilterError(
                     message=f"Content rejected by safety filter: {error_message}",
                     filter_reason=error_code,
@@ -101,7 +105,7 @@ class AzureOpenAIClient(BaseHTTPClient):
 
         if response.status_code == 404:
             raise AzureOpenAIError(
-                message=f"Deployment not found. Check your deployment name.",
+                message="Deployment not found. Check your deployment name.",
                 status_code=404,
             )
 

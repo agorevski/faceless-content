@@ -14,6 +14,7 @@ from faceless.core.exceptions import ImageGenerationError
 from faceless.core.models import Checkpoint, Scene, Script
 from faceless.utils.logging import LoggerMixin
 
+
 class ImageService(LoggerMixin):
     """
     Service for generating images from scene prompts.
@@ -42,7 +43,7 @@ class ImageService(LoggerMixin):
     def generate_for_scene(
         self,
         scene: Scene,
-        niche: Niche,
+        niche: Niche,  # noqa: ARG002
         platform: Platform,
         output_dir: Path,
         visual_style_suffix: str = "",
@@ -130,7 +131,9 @@ class ImageService(LoggerMixin):
         for scene in script.scenes:
             # Skip if already done (checkpoint support)
             if checkpoint and checkpoint.is_image_done(scene.scene_number):
-                existing_path = output_dir / f"scene_{scene.scene_number:02d}_{platform.value}.png"
+                existing_path = (
+                    output_dir / f"scene_{scene.scene_number:02d}_{platform.value}.png"
+                )
                 if existing_path.exists():
                     self.logger.info(
                         "Skipping existing image",

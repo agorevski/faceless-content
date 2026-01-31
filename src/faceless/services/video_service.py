@@ -7,13 +7,13 @@ using FFmpeg for video processing.
 
 import subprocess
 from pathlib import Path
-from typing import Any
 
 from faceless.config import get_settings
 from faceless.core.enums import Platform
 from faceless.core.exceptions import FFmpegError, VideoAssemblyError
 from faceless.core.models import Checkpoint, Scene, Script
 from faceless.utils.logging import LoggerMixin
+
 
 class VideoService(LoggerMixin):
     """
@@ -147,19 +147,31 @@ class VideoService(LoggerMixin):
 
         args = [
             "-y",  # Overwrite output
-            "-loop", "1",  # Loop image
-            "-i", str(scene.image_path),  # Image input
-            "-i", str(scene.audio_path),  # Audio input
-            "-filter_complex", filter_complex,
-            "-map", "[v]",
-            "-map", "1:a",
-            "-c:v", "libx264",
-            "-preset", "medium",
-            "-crf", "23",
-            "-c:a", "aac",
-            "-b:a", "192k",
+            "-loop",
+            "1",  # Loop image
+            "-i",
+            str(scene.image_path),  # Image input
+            "-i",
+            str(scene.audio_path),  # Audio input
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            "[v]",
+            "-map",
+            "1:a",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-crf",
+            "23",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
             "-shortest",  # Match shortest input (audio)
-            "-pix_fmt", "yuv420p",
+            "-pix_fmt",
+            "yuv420p",
             str(output_path),
         ]
 
@@ -207,10 +219,14 @@ class VideoService(LoggerMixin):
         try:
             args = [
                 "-y",
-                "-f", "concat",
-                "-safe", "0",
-                "-i", str(concat_file),
-                "-c", "copy",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(concat_file),
+                "-c",
+                "copy",
                 str(output_path),
             ]
 
@@ -273,15 +289,24 @@ class VideoService(LoggerMixin):
 
         args = [
             "-y",
-            "-i", str(video_path),
-            "-stream_loop", "-1",  # Loop music
-            "-i", str(music_path),
-            "-filter_complex", filter_complex,
-            "-map", "0:v",
-            "-map", "[aout]",
-            "-c:v", "copy",
-            "-c:a", "aac",
-            "-b:a", "192k",
+            "-i",
+            str(video_path),
+            "-stream_loop",
+            "-1",  # Loop music
+            "-i",
+            str(music_path),
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            "0:v",
+            "-map",
+            "[aout]",
+            "-c:v",
+            "copy",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
             "-shortest",
             str(output_path),
         ]
@@ -331,8 +356,12 @@ class VideoService(LoggerMixin):
         # Create scene videos
         for scene in script.scenes:
             # Skip if already done
-            if checkpoint and checkpoint.is_video_done(platform.value, scene.scene_number):
-                scene_video_path = videos_dir / f"scene_{scene.scene_number:02d}_{platform.value}.mp4"
+            if checkpoint and checkpoint.is_video_done(
+                platform.value, scene.scene_number
+            ):
+                scene_video_path = (
+                    videos_dir / f"scene_{scene.scene_number:02d}_{platform.value}.mp4"
+                )
                 if scene_video_path.exists():
                     self.logger.info(
                         "Skipping existing scene video",
@@ -341,7 +370,9 @@ class VideoService(LoggerMixin):
                     scene_videos.append(scene_video_path)
                     continue
 
-            scene_video_path = videos_dir / f"scene_{scene.scene_number:02d}_{platform.value}.mp4"
+            scene_video_path = (
+                videos_dir / f"scene_{scene.scene_number:02d}_{platform.value}.mp4"
+            )
 
             self.create_scene_video(
                 scene=scene,
@@ -359,7 +390,9 @@ class VideoService(LoggerMixin):
         self.concatenate_scenes(scene_videos, concat_output)
 
         # Add background music if provided
-        final_filename = f"{script.niche.value}_{script.safe_title}_{platform.value}.mp4"
+        final_filename = (
+            f"{script.niche.value}_{script.safe_title}_{platform.value}.mp4"
+        )
         final_output = output_dir / final_filename
 
         if music_path:
@@ -371,6 +404,7 @@ class VideoService(LoggerMixin):
         else:
             # Just copy to final location
             import shutil
+
             shutil.copy2(concat_output, final_output)
 
         self.logger.info(
@@ -439,9 +473,12 @@ class VideoService(LoggerMixin):
             result = subprocess.run(
                 [
                     self._ffprobe,
-                    "-v", "error",
-                    "-show_entries", "format=duration",
-                    "-of", "default=noprint_wrappers=1:nokey=1",
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
                     str(video_path),
                 ],
                 capture_output=True,

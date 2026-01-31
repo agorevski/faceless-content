@@ -115,18 +115,18 @@ def generate_thumbnail_prompt(
 ) -> str:
     """
     Generate an optimized prompt for thumbnail creation.
-    
+
     Args:
         title: Video title to base thumbnail on
         niche: Content niche
         concept: Thumbnail concept type
         custom_subject: Optional custom subject override
-    
+
     Returns:
         Optimized prompt for image generation
     """
     template = THUMBNAIL_TEMPLATES.get(niche, THUMBNAIL_TEMPLATES["finance"])
-    
+
     # Extract key subject from title or use custom
     if custom_subject:
         subject = custom_subject
@@ -134,15 +134,15 @@ def generate_thumbnail_prompt(
         # Simple extraction - take meaningful words from title
         subject = title.replace("Why", "").replace("How", "")
         subject = subject.replace("The", "").strip()
-    
+
     # Get concept description
     concept_desc = THUMBNAIL_CONCEPTS.get(concept, THUMBNAIL_CONCEPTS["reveal"])
-    
+
     # Build the prompt
     prompt = template["prompt_template"].format(subject=subject)
     prompt += f", {concept_desc}"
     prompt += f", {template['style']}"
-    
+
     # Add composition guidance for thumbnails
     prompt += (
         ", extreme close-up or medium shot, "
@@ -150,7 +150,7 @@ def generate_thumbnail_prompt(
         "space for text overlay on left or right third, "
         "16:9 aspect ratio optimized"
     )
-    
+
     return prompt
 
 
@@ -162,54 +162,54 @@ def generate_thumbnail(
 ) -> str:
     """
     Generate a thumbnail image using Azure OpenAI.
-    
+
     Args:
         prompt: Image generation prompt
         niche: Content niche for output path
         output_name: Output filename (without extension)
         size: Image size (default optimized for YouTube)
-    
+
     Returns:
         Path to generated thumbnail
     """
     output_dir = os.path.join(PATHS[niche]["images"], "thumbnails")
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, f"{output_name}.png")
-    
+
     # Skip if already exists
     if os.path.exists(output_path):
         print(f"🖼️ Thumbnail already exists: {output_path}")
         return output_path
-    
+
     url = (
         f"{AZURE_OPENAI_ENDPOINT}openai/deployments/"
         f"{AZURE_OPENAI_IMAGE_DEPLOYMENT}/images/generations"
         f"?api-version={AZURE_OPENAI_IMAGE_API_VERSION}"
     )
-    
+
     headers = {
         "Content-Type": "application/json",
         "api-key": AZURE_OPENAI_KEY,
     }
-    
+
     payload = {
         "prompt": prompt,
         "size": size,
         "quality": "high",
         "n": 1,
     }
-    
+
     print(f"🖼️ Generating thumbnail: {output_name}")
     print(f"   Prompt: {prompt[:80]}...")
-    
+
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=120)
         response.raise_for_status()
         result = response.json()
-        
+
         if "data" in result and len(result["data"]) > 0:
             image_data = result["data"][0]
-            
+
             if "url" in image_data:
                 img_response = requests.get(image_data["url"], timeout=60)
                 img_bytes = img_response.content
@@ -217,20 +217,20 @@ def generate_thumbnail(
                 img_bytes = base64.b64decode(image_data["b64_json"])
             else:
                 raise ValueError("Unexpected response format")
-            
+
             with open(output_path, "wb") as f:
                 f.write(img_bytes)
-            
+
             # Save prompt for reference
             prompt_path = output_path.replace(".png", "_prompt.txt")
             with open(prompt_path, "w", encoding="utf-8") as f:
                 f.write(prompt)
-            
+
             print(f"   ✅ Saved: {output_path}")
             return output_path
         else:
             raise ValueError(f"No image data in response: {result}")
-            
+
     except requests.exceptions.RequestException as e:
         print(f"   ❌ Error: {e}")
         raise
@@ -245,14 +245,14 @@ def generate_thumbnail_variants(
 ) -> List[str]:
     """
     Generate multiple thumbnail variants for A/B testing.
-    
+
     Args:
         title: Video title
         niche: Content niche
         base_name: Base filename for outputs
         num_variants: Number of variants to generate
         concepts: List of concepts to use (defaults to auto-selection)
-    
+
     Returns:
         List of paths to generated thumbnails
     """
@@ -264,24 +264,24 @@ def generate_thumbnail_variants(
             concepts = ["reaction", "before_after", "countdown"]
         else:
             concepts = ["reveal", "versus", "secret"]
-    
+
     # Limit to requested number
     concepts = concepts[:num_variants]
-    
+
     print(f"\n🎨 Generating {len(concepts)} thumbnail variants for: {title}")
-    
+
     paths = []
     for i, concept in enumerate(concepts, 1):
         prompt = generate_thumbnail_prompt(title, niche, concept)
         output_name = f"{base_name}_thumb_v{i}_{concept}"
-        
+
         try:
             path = generate_thumbnail(prompt, niche, output_name)
             paths.append(path)
         except Exception as e:
             print(f"   ⚠️ Failed variant {i}: {e}")
             paths.append(None)
-    
+
     return paths
 
 
@@ -292,21 +292,21 @@ def generate_from_script(
 ) -> List[str]:
     """
     Generate thumbnails based on a script file.
-    
+
     Args:
         script_path: Path to script JSON
         niche: Content niche
         num_variants: Number of thumbnail variants
-    
+
     Returns:
         List of thumbnail paths
     """
     with open(script_path, "r", encoding="utf-8") as f:
         script = json.load(f)
-    
+
     title = script.get("title", "Untitled")
     base_name = os.path.splitext(os.path.basename(script_path))[0]
-    
+
     return generate_thumbnail_variants(title, niche, base_name, num_variants)
 
 
@@ -316,19 +316,19 @@ def create_text_overlay_instructions(
 ) -> Dict:
     """
     Generate text overlay instructions for manual editing.
-    
+
     Since we can't directly add text to AI images reliably,
     this provides instructions for adding text in an editor.
-    
+
     Args:
         title: Video title
         niche: Content niche
-    
+
     Returns:
         Dict with text overlay specifications
     """
     template = THUMBNAIL_TEMPLATES.get(niche, THUMBNAIL_TEMPLATES["finance"])
-    
+
     # Extract key words for thumbnail text (shorter than full title)
     words = title.split()
     if len(words) > 5:
@@ -336,7 +336,7 @@ def create_text_overlay_instructions(
         thumb_text = " ".join(words[:5]) + "..."
     else:
         thumb_text = title
-    
+
     # Generate color recommendations based on niche
     if niche == "scary-stories":
         text_color = "#FF0000"  # Red
@@ -350,7 +350,7 @@ def create_text_overlay_instructions(
         text_color = "#FFD700"  # Gold
         outline_color = "#000000"  # Black
         font_style = "Playfair Display or Times New Roman Bold"
-    
+
     return {
         "recommended_text": thumb_text,
         "text_color": text_color,
@@ -374,45 +374,37 @@ def create_text_overlay_instructions(
 
 if __name__ == "__main__":
     import argparse
-    
+
     parser = argparse.ArgumentParser(
         description="Generate thumbnails for faceless content"
     )
+    parser.add_argument("title", help="Video title to generate thumbnail for")
     parser.add_argument(
-        "title",
-        help="Video title to generate thumbnail for"
-    )
-    parser.add_argument(
-        "--niche", "-n",
+        "--niche",
+        "-n",
         choices=["scary-stories", "finance", "luxury"],
         required=True,
-        help="Content niche"
+        help="Content niche",
+    )
+    parser.add_argument("--name", "-o", default=None, help="Output filename base")
+    parser.add_argument(
+        "--variants", "-v", type=int, default=2, help="Number of variants to generate"
     )
     parser.add_argument(
-        "--name", "-o",
-        default=None,
-        help="Output filename base"
-    )
-    parser.add_argument(
-        "--variants", "-v",
-        type=int,
-        default=2,
-        help="Number of variants to generate"
-    )
-    parser.add_argument(
-        "--concept", "-c",
+        "--concept",
+        "-c",
         choices=list(THUMBNAIL_CONCEPTS.keys()),
-        help="Specific concept to use"
+        help="Specific concept to use",
     )
-    
+
     args = parser.parse_args()
-    
+
     if args.name:
         base_name = args.name
     else:
         safe_title = args.title.lower().replace(" ", "-")[:30]
         base_name = f"{safe_title}_{datetime.now().strftime('%Y%m%d')}"
-    
+
     if args.concept:
         concepts = [args.concept]
         paths = generate_thumbnail_variants(
@@ -422,7 +414,7 @@ if __name__ == "__main__":
         paths = generate_thumbnail_variants(
             args.title, args.niche, base_name, args.variants
         )
-    
+
     print(f"\n📊 Text Overlay Instructions:")
     instructions = create_text_overlay_instructions(args.title, args.niche)
     for key, value in instructions.items():

@@ -126,7 +126,7 @@ def create_subtitles_from_script(
 
         # Create subtitle chunks
         for i in range(0, len(words), words_per_subtitle):
-            chunk_words = words[i:i + words_per_subtitle]
+            chunk_words = words[i : i + words_per_subtitle]
             chunk_text = " ".join(chunk_words)
 
             start_time = current_time + (i * time_per_word)
@@ -228,9 +228,12 @@ def get_audio_duration(audio_path: str) -> float:
     """Get duration of audio file in seconds using FFprobe."""
     cmd = [
         "ffprobe",
-        "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
         audio_path,
     ]
     try:
@@ -283,9 +286,12 @@ def burn_subtitles_to_video(
     cmd = [
         "ffmpeg",
         "-y",
-        "-i", video_path,
-        "-vf", f"subtitles='{safe_sub_path}':force_style='{style_str}'",
-        "-c:a", "copy",
+        "-i",
+        video_path,
+        "-vf",
+        f"subtitles='{safe_sub_path}':force_style='{style_str}'",
+        "-c:a",
+        "copy",
         output_path,
     ]
 
@@ -344,12 +350,14 @@ def generate_animated_captions(
             start = current_time + (i * time_per_word)
             end = start + time_per_word
 
-            captions.append({
-                "word": word,
-                "start": round(start, 3),
-                "end": round(end, 3),
-                "scene": scene["scene_number"],
-            })
+            captions.append(
+                {
+                    "word": word,
+                    "start": round(start, 3),
+                    "end": round(end, 3),
+                    "scene": scene["scene_number"],
+                }
+            )
 
         current_time += duration
 
@@ -405,31 +413,25 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Generate subtitles for faceless content"
     )
+    parser.add_argument("script", help="Path to script JSON file")
     parser.add_argument(
-        "script",
-        help="Path to script JSON file"
-    )
-    parser.add_argument(
-        "--niche", "-n",
+        "--niche",
+        "-n",
         choices=["scary-stories", "finance", "luxury"],
         required=True,
-        help="Content niche"
+        help="Content niche",
     )
     parser.add_argument(
-        "--format", "-f",
+        "--format",
+        "-f",
         choices=["srt", "vtt", "all"],
         default="all",
-        help="Output format"
+        help="Output format",
     )
     parser.add_argument(
-        "--animated", "-a",
-        action="store_true",
-        help="Generate animated caption JSON"
+        "--animated", "-a", action="store_true", help="Generate animated caption JSON"
     )
-    parser.add_argument(
-        "--burn", "-b",
-        help="Video file to burn subtitles into"
-    )
+    parser.add_argument("--burn", "-b", help="Video file to burn subtitles into")
 
     args = parser.parse_args()
 
@@ -443,9 +445,7 @@ if __name__ == "__main__":
     elif args.format == "all":
         generate_all_subtitle_formats(args.script, args.niche)
     else:
-        srt_path, vtt_path = create_subtitles_from_script(
-            args.script, args.niche
-        )
+        srt_path, vtt_path = create_subtitles_from_script(args.script, args.niche)
         if args.format == "srt":
             print(f"Created: {srt_path}")
         else:

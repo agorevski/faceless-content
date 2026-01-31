@@ -7,12 +7,13 @@ Features:
 - Configuration validation before running
 - Optional thumbnail and subtitle generation
 - Multi-platform output support
+- TikTok engagement optimization (hooks, hashtags, posting schedule)
 """
 
+import argparse
+import json
 import os
 import sys
-import json
-import argparse
 from datetime import datetime
 
 # Add pipeline directory to path
@@ -20,16 +21,19 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config import PATHS
 from config_validator import validate_for_pipeline
-from story_scraper import fetch_and_process_stories, story_to_script
-from script_enhancer import enhance_script
 from image_generator import generate_from_script as generate_images
+from script_enhancer import enhance_script
+from story_scraper import fetch_and_process_stories, story_to_script
 from tts_generator import generate_from_script as generate_audio
 from video_assembler import assemble_from_script, create_tiktok_cuts
-from thumbnail_generator import generate_from_script as generate_thumbnails
-from subtitle_generator import (
-    create_subtitles_from_script,
-    burn_subtitles_to_video,
-)
+
+# Import TikTok engagement modules
+try:
+    from content_metadata import generate_content_metadata, save_metadata
+
+    ENGAGEMENT_MODULES_AVAILABLE = True
+except ImportError:
+    ENGAGEMENT_MODULES_AVAILABLE = False
 
 
 # =============================================================================
@@ -47,7 +51,7 @@ def get_checkpoint_path(niche: str, script_name: str) -> str:
 def load_checkpoint(checkpoint_path: str) -> dict:
     """Load checkpoint data if it exists."""
     if os.path.exists(checkpoint_path):
-        with open(checkpoint_path, "r", encoding="utf-8") as f:
+        with open(checkpoint_path, encoding="utf-8") as f:
             return json.load(f)
     return {
         "completed_steps": [],
@@ -90,6 +94,9 @@ def full_pipeline(
     burn_subs: bool = False,
     validate: bool = True,
     use_checkpoint: bool = True,
+    generate_metadata: bool = True,
+    series_name: str = None,
+    tiktok_format: str = None,
 ) -> dict:
     """
     Run the complete content production pipeline.
@@ -108,6 +115,9 @@ def full_pipeline(
         burn_subs: Whether to burn subtitles into video
         validate: Whether to validate configuration first
         use_checkpoint: Whether to use checkpointing for resume
+        generate_metadata: Whether to generate TikTok posting metadata
+        series_name: Optional series name for recurring content
+        tiktok_format: Optional TikTok format name (e.g., "pov_horror")
 
     Returns:
         Dict with paths to all created assets
@@ -117,9 +127,13 @@ def full_pipeline(
         platforms = ["youtube", "tiktok"]
 
     print(f"\n{'='*60}")
-    print(f"🎬 FACELESS CONTENT PIPELINE")
+    print("🎬 FACELESS CONTENT PIPELINE")
     print(f"   Niche: {niche}")
     print(f"   Platforms: {', '.join(platforms)}")
+    if series_name:
+        print(f"   Series: {series_name}")
+    if tiktok_format:
+        print(f"   Format: {tiktok_format}")
     print(f"   Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'='*60}\n")
 
@@ -156,7 +170,7 @@ def full_pipeline(
             ][:story_count]
             print(f"   Found {len(script_paths)} existing scripts")
         else:
-            print(f"   ❌ No scripts directory found")
+            print("   ❌ No scripts directory found")
             return results
     else:
         # Fetch new stories
@@ -234,13 +248,72 @@ def full_pipeline(
                         add_music=add_music,
                         music_path=music_path,
                     )
-                    results["videos"].append(
-                        {
-                            "platform": platform,
-                            "path": video_path,
-                            "script": script_path,
-                        }
-                    )
+
+                    video_info = {
+                        "platform": platform,
+                        "path": video_path,
+                        "script": script_path,
+                    }
+
+                    # Generate TikTok metadata for TikTok videos
+                    if (
+                        platform == "tiktok"
+                        and generate_metadata
+                        and ENGAGEMENT_MODULES_AVAILABLE
+                    ):
+                        try:
+                            # Load script for title and duration info
+                            with open(script_path, encoding="utf-8") as f:
+                                script_data = json.load(f)
+
+                            # Estimate duration from scenes
+                            total_duration = sum(
+                                scene.get("duration_estimate", 10)
+                                for scene in script_data.get("scenes", [])
+                            )
+
+                            # Determine part number for series
+                            part_number = None
+                            if series_name:
+                                existing_videos = [
+                                    v
+                                    for v in results["videos"]
+                                    if v["platform"] == "tiktok"
+                                ]
+                                part_number = len(existing_videos) + 1
+
+                            metadata = generate_content_metadata(
+                                niche=niche,
+                                title=script_data.get("title", "Untitled"),
+                                video_duration=total_duration,
+                                format_name=tiktok_format,
+                                series_name=series_name,
+                                part_number=part_number,
+                            )
+
+                            # Save metadata alongside video
+                            metadata_path = video_path.replace(".mp4", "_metadata.json")
+                            save_metadata(metadata, metadata_path)
+                            video_info["metadata_path"] = metadata_path
+                            video_info["hashtags"] = metadata["hashtag_string"]
+                            video_info["optimal_posting_time"] = metadata[
+                                "optimal_posting"
+                            ]["formatted"]
+
+                            print(
+                                f"   📱 Metadata saved: {os.path.basename(metadata_path)}"
+                            )
+                            print(
+                                f"   🏷️ Hashtags: {metadata['hashtag_string'][:50]}..."
+                            )
+                            print(
+                                f"   ⏰ Best posting: {metadata['optimal_posting']['formatted']}"
+                            )
+
+                        except Exception as e:
+                            print(f"   ⚠️ Metadata generation failed: {e}")
+
+                    results["videos"].append(video_info)
                     print(f"   ✅ Created: {video_path}")
 
                     # Create TikTok cuts if this is a long YouTube video
@@ -270,6 +343,8 @@ def full_pipeline(
         print("\n   Created Videos:")
         for video in results["videos"]:
             print(f"   - {video['path']}")
+            if "optimal_posting_time" in video:
+                print(f"     Post at: {video['optimal_posting_time']}")
 
     if results["errors"]:
         print("\n   Errors encountered:")
@@ -395,20 +470,18 @@ Examples:
         help="Skip fetching new stories, use existing scripts",
     )
     parser.add_argument(
-        "--script", "-s",
-        help="Path to a specific script file to process"
+        "--script", "-s", help="Path to a specific script file to process"
     )
+    parser.add_argument("--music", "-m", help="Path to background music file")
     parser.add_argument(
-        "--music", "-m",
-        help="Path to background music file"
-    )
-    parser.add_argument(
-        "--enhance", "-e",
+        "--enhance",
+        "-e",
         action="store_true",
         help="Enhance scripts with GPT for better engagement",
     )
     parser.add_argument(
-        "--thumbnails", "-t",
+        "--thumbnails",
+        "-t",
         action="store_true",
         help="Generate thumbnail variants for A/B testing",
     )
@@ -432,6 +505,39 @@ Examples:
         action="store_true",
         help="Skip configuration validation",
     )
+    parser.add_argument(
+        "--no-metadata",
+        action="store_true",
+        help="Skip TikTok metadata generation (hashtags, posting times)",
+    )
+    parser.add_argument(
+        "--series",
+        help="Series name for recurring content (e.g., '3AM Stories')",
+    )
+    parser.add_argument(
+        "--format",
+        choices=[
+            "pov_horror",
+            "green_screen_storytime",
+            "rules_of_location",
+            "creepy_text_messages",
+            "split_screen_reaction",
+            "ranking_viewer_stories",
+            "financial_red_flags_dating",
+            "things_that_scream_broke",
+            "roast_my_spending",
+            "money_hot_takes",
+            "what_x_gets_you",
+            "i_did_the_math",
+            "guess_the_price",
+            "rich_people_secrets",
+            "pov_afford_anything",
+            "luxury_asmr",
+            "cheap_vs_expensive",
+            "billionaire_day_in_life",
+        ],
+        help="TikTok content format to use",
+    )
 
     args = parser.parse_args()
 
@@ -441,10 +547,7 @@ Examples:
         sys.exit(0 if success else 1)
 
     # Determine platforms
-    if args.platform == "both":
-        platforms = ["youtube", "tiktok"]
-    else:
-        platforms = [args.platform]
+    platforms = ["youtube", "tiktok"] if args.platform == "both" else [args.platform]
 
     # Run pipeline
     results = full_pipeline(
@@ -460,6 +563,9 @@ Examples:
         generate_subs=args.subtitles,
         burn_subs=args.burn_subs,
         validate=not args.no_validate,
+        generate_metadata=not args.no_metadata,
+        series_name=args.series,
+        tiktok_format=args.format,
     )
 
     # Exit with error code if there were failures

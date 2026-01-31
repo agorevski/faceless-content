@@ -9,8 +9,7 @@ from typing import Any
 
 from faceless.clients.azure_openai import AzureOpenAIClient
 from faceless.config import get_settings
-from faceless.core.enums import Niche
-from faceless.core.models import Script, Scene, VisualStyle
+from faceless.core.models import Scene, Script, VisualStyle
 from faceless.utils.logging import LoggerMixin
 
 ENHANCE_SYSTEM_PROMPT = """You are an expert content creator for short-form videos.
@@ -24,6 +23,7 @@ Guidelines:
 5. Add visual style consistency across scenes
 
 Output format: Valid JSON matching the script structure."""
+
 
 class EnhancerService(LoggerMixin):
     """
@@ -168,7 +168,9 @@ Return a JSON object with:
         """Apply enhancements to the original script."""
         # Update scenes
         enhanced_scenes = []
-        enhancement_scenes = {s["scene_number"]: s for s in enhancements.get("scenes", [])}
+        enhancement_scenes = {
+            s["scene_number"]: s for s in enhancements.get("scenes", [])
+        }
 
         for scene in original.scenes:
             enhanced_data = enhancement_scenes.get(scene.scene_number, {})
@@ -193,6 +195,7 @@ Return a JSON object with:
 
         # Create enhanced script
         from datetime import datetime
+
         return Script(
             title=enhancements.get("title", original.title),
             niche=original.niche,

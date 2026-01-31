@@ -14,6 +14,7 @@ from faceless.core.exceptions import TTSGenerationError
 from faceless.core.models import Checkpoint, Scene, Script
 from faceless.utils.logging import LoggerMixin
 
+
 class TTSService(LoggerMixin):
     """
     Service for generating text-to-speech audio.
@@ -188,9 +189,12 @@ class TTSService(LoggerMixin):
             result = subprocess.run(
                 [
                     self._settings.ffprobe_path,
-                    "-v", "error",
-                    "-show_entries", "format=duration",
-                    "-of", "default=noprint_wrappers=1:nokey=1",
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
                     str(audio_path),
                 ],
                 capture_output=True,
