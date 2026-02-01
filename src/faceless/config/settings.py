@@ -225,7 +225,7 @@ class Settings(BaseSettings):
         description="Directory for shared resources",
     )
 
-    # FFmpeg paths
+    # FFmpeg paths (empty string means use system PATH)
     ffmpeg_path: str = Field(
         default="ffmpeg",
         description="Path to FFmpeg binary",
@@ -235,12 +235,33 @@ class Settings(BaseSettings):
         description="Path to FFprobe binary",
     )
 
+    @field_validator("ffmpeg_path", "ffprobe_path", mode="before")
+    @classmethod
+    def empty_to_default(cls, v: str, info) -> str:
+        """Convert empty string to default command name."""
+        if v == "" or v is None:
+            # Return default based on field name
+            return "ffmpeg" if info.field_name == "ffmpeg_path" else "ffprobe"
+        return v
+
     # Processing settings
     max_concurrent_requests: int = Field(
         default=5,
         ge=1,
         le=20,
-        description="Maximum concurrent API requests",
+        description="Maximum concurrent API requests (general)",
+    )
+    max_concurrent_images: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Maximum concurrent image generation requests",
+    )
+    max_concurrent_tts: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Maximum concurrent TTS (text-to-speech) requests",
     )
     request_timeout: int = Field(
         default=120,

@@ -5,6 +5,7 @@ This service handles assembling final videos from generated images and audio,
 using FFmpeg for video processing.
 """
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -34,8 +35,34 @@ class VideoService(LoggerMixin):
     def __init__(self) -> None:
         """Initialize video service."""
         self._settings = get_settings()
-        self._ffmpeg = self._settings.ffmpeg_path
-        self._ffprobe = self._settings.ffprobe_path
+        # Resolve full path to ffmpeg/ffprobe on Windows
+        self._ffmpeg = self._resolve_executable(self._settings.ffmpeg_path)
+        self._ffprobe = self._resolve_executable(self._settings.ffprobe_path)
+
+    def _resolve_executable(self, path: str) -> str:
+        """
+        Resolve executable path, using shutil.which() if needed.
+
+        On Windows, subprocess.run with shell=False needs the full path
+        to executables, or they won't be found in PATH.
+
+        Args:
+            path: Path or command name (e.g., 'ffmpeg' or 'C:\\path\\to\\ffmpeg.exe')
+
+        Returns:
+            Full path to executable, or original path if not found
+        """
+        # If it's already a full path, use it
+        if Path(path).is_absolute() or "/" in path or "\\" in path:
+            return path
+
+        # Try to find in PATH
+        resolved = shutil.which(path)
+        if resolved:
+            return resolved
+
+        # Fall back to original (will likely fail, but error will be clearer)
+        return path
 
     def _run_ffmpeg(
         self,
@@ -55,12 +82,21 @@ class VideoService(LoggerMixin):
         Raises:
             FFmpegError: On FFmpeg failure
         """
-        cmd = [self._ffmpeg] + args
+        # Build command - use shell=True on Windows if executable not resolved
+        use_shell = self._ffmpeg == "ffmpeg"  # Not resolved to full path
+        
+        if use_shell:
+            # Build command string for shell execution
+            cmd_str = "ffmpeg " + " ".join(f'"{arg}"' if " " in arg else arg for arg in args)
+            cmd = cmd_str
+        else:
+            cmd = [self._ffmpeg] + args
 
         self.logger.debug(
             "Running FFmpeg",
             description=description,
-            args_preview=" ".join(args[:5]),
+            command=str(cmd)[:100] + "...",
+            use_shell=use_shell,
         )
 
         try:
@@ -69,12 +105,19 @@ class VideoService(LoggerMixin):
                 capture_output=True,
                 text=True,
                 timeout=600,  # 10 minute timeout
+                shell=use_shell,
             )
 
             if result.returncode != 0:
+                self.logger.error(
+                    "FFmpeg command failed",
+                    description=description,
+                    return_code=result.returncode,
+                    stderr=result.stderr[:500] if result.stderr else None,
+                )
                 raise FFmpegError(
                     message=f"{description} failed",
-                    command=cmd,
+                    command=[cmd] if isinstance(cmd, str) else cmd,
                     return_code=result.returncode,
                     stderr=result.stderr,
                 )
@@ -84,12 +127,24 @@ class VideoService(LoggerMixin):
         except subprocess.TimeoutExpired as e:
             raise FFmpegError(
                 message=f"{description} timed out",
-                command=cmd,
+                command=[cmd] if isinstance(cmd, str) else cmd,
             ) from e
         except FileNotFoundError as e:
             raise FFmpegError(
                 message="FFmpeg not found. Ensure it is installed and in PATH.",
-                command=cmd,
+                command=[cmd] if isinstance(cmd, str) else cmd,
+            ) from e
+        except OSError as e:
+            # Catch Windows-specific errors like WinError 87
+            self.logger.error(
+                "FFmpeg OS error",
+                description=description,
+                error=str(e),
+                command_preview=str(cmd)[:50],
+            )
+            raise FFmpegError(
+                message=f"{description} failed with OS error: {e}",
+                command=[cmd] if isinstance(cmd, str) else cmd,
             ) from e
 
     def create_scene_video(
@@ -470,22 +525,39 @@ class VideoService(LoggerMixin):
             Duration in seconds
         """
         try:
-            result = subprocess.run(
-                [
-                    self._ffprobe,
-                    "-v",
-                    "error",
-                    "-show_entries",
-                    "format=duration",
-                    "-of",
-                    "default=noprint_wrappers=1:nokey=1",
-                    str(video_path),
-                ],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            return float(result.stdout.strip())
+            # Use shell=True if ffprobe path wasn't resolved
+            use_shell = self._ffprobe == "ffprobe"
+            
+            if use_shell:
+                cmd = f'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "{video_path}"'
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    shell=True,
+                )
+            else:
+                result = subprocess.run(
+                    [
+                        self._ffprobe,
+                        "-v",
+                        "error",
+                        "-show_entries",
+                        "format=duration",
+                        "-of",
+                        "default=noprint_wrappers=1:nokey=1",
+                        str(video_path),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+            
+            stdout = result.stdout.strip()
+            if not stdout:
+                return 0.0
+            return float(stdout)
         except Exception as e:
             self.logger.warning(
                 "Could not get video duration",

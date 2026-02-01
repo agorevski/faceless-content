@@ -20,6 +20,7 @@ from faceless.core.models import (
     JobResult,
     Script,
 )
+from faceless.services.enhancer_service import EnhancerService
 from faceless.services.image_service import ImageService
 from faceless.services.tts_service import TTSService
 from faceless.services.video_service import VideoService
@@ -52,6 +53,7 @@ class Orchestrator(LoggerMixin):
         """Initialize orchestrator with all services."""
         self._settings = get_settings()
         self._client = AzureOpenAIClient()
+        self._enhancer_service = EnhancerService(self._client)
         self._image_service = ImageService(self._client)
         self._tts_service = TTSService(self._client)
         self._video_service = VideoService()
@@ -179,84 +181,150 @@ class Orchestrator(LoggerMixin):
         checkpoint = self._load_or_create_checkpoint(script)
 
         try:
-            # Step 1: Enhance script (optional)
-            if enhance:
-                self.logger.info("Enhancing script")
+            # Step 1: Enhance script (optional) - BLOCKING
+            if enhance and "enhance" not in checkpoint.completed_steps:
+                self.logger.info("Starting script enhancement...")
                 checkpoint.status = JobStatus.ENHANCING
-                # TODO: Implement script enhancement
-                checkpoint.completed_steps.append("enhance")
-
-            # Step 2: Generate images
-            self.logger.info("Generating images")
-            checkpoint.status = JobStatus.GENERATING_IMAGES
-
-            for platform in platforms:
+                
                 try:
-                    self._image_service.generate_for_script(
-                        script=script,
-                        platform=platform,
-                        checkpoint=checkpoint,
+                    enhanced_script = self._enhancer_service.enhance_script(script)
+                    # Update script reference with enhanced version
+                    script = enhanced_script
+                    checkpoint.completed_steps.append("enhance")
+                    self._save_checkpoint(checkpoint, script)
+                    self.logger.info(
+                        "Script enhancement completed",
+                        scene_count=len(script.scenes),
                     )
                 except Exception as e:
-                    errors.append(f"Image generation ({platform.value}): {e}")
+                    self.logger.warning(
+                        "Script enhancement failed, continuing with original",
+                        error=str(e),
+                    )
+                    errors.append(f"Enhancement: {e}")
+            elif enhance:
+                self.logger.info("Skipping enhancement (already completed)")
 
-            checkpoint.completed_steps.append("images")
-            self._save_checkpoint(checkpoint, script)
+            # Step 2: Generate images (with parallel processing)
+            if "images" not in checkpoint.completed_steps:
+                self.logger.info(
+                    "Starting image generation...",
+                    scene_count=len(script.scenes),
+                    platforms=[p.value for p in platforms],
+                )
+                checkpoint.status = JobStatus.GENERATING_IMAGES
+
+                for platform in platforms:
+                    try:
+                        generated_count = self._image_service.generate_for_script(
+                            script=script,
+                            platform=platform,
+                            checkpoint=checkpoint,
+                        )
+                        self.logger.info(
+                            "Image generation completed for platform",
+                            platform=platform.value,
+                            images_generated=len(generated_count) if generated_count else 0,
+                        )
+                    except Exception as e:
+                        errors.append(f"Image generation ({platform.value}): {e}")
+
+                checkpoint.completed_steps.append("images")
+                self._save_checkpoint(checkpoint, script)
+                self.logger.info("All image generation completed")
+            else:
+                self.logger.info("Skipping image generation (already completed)")
 
             # Step 3: Generate audio
-            self.logger.info("Generating audio")
-            checkpoint.status = JobStatus.GENERATING_AUDIO
-
-            try:
-                self._tts_service.generate_for_script(
-                    script=script,
-                    checkpoint=checkpoint,
+            if "audio" not in checkpoint.completed_steps:
+                self.logger.info(
+                    "Starting audio generation...",
+                    scene_count=len(script.scenes),
                 )
-                # Update durations based on actual audio
-                self._tts_service.update_scene_durations(script)
-            except Exception as e:
-                errors.append(f"Audio generation: {e}")
+                checkpoint.status = JobStatus.GENERATING_AUDIO
 
-            checkpoint.completed_steps.append("audio")
-            self._save_checkpoint(checkpoint, script)
+                try:
+                    self._tts_service.generate_for_script(
+                        script=script,
+                        checkpoint=checkpoint,
+                    )
+                    # Update durations based on actual audio
+                    self._tts_service.update_scene_durations(script)
+                    self.logger.info("Audio generation completed")
+                except Exception as e:
+                    errors.append(f"Audio generation: {e}")
+
+                checkpoint.completed_steps.append("audio")
+                self._save_checkpoint(checkpoint, script)
+            else:
+                self.logger.info("Skipping audio generation (already completed)")
 
             # Step 4: Assemble videos
-            self.logger.info("Assembling videos")
-            checkpoint.status = JobStatus.ASSEMBLING_VIDEO
+            if "videos" not in checkpoint.completed_steps:
+                self.logger.info(
+                    "Starting video assembly...",
+                    platforms=[p.value for p in platforms],
+                )
+                checkpoint.status = JobStatus.ASSEMBLING_VIDEO
+                video_errors: list[str] = []
 
-            for platform in platforms:
-                try:
-                    path = self._video_service.assemble_video(
-                        script=script,
-                        platform=platform,
-                        checkpoint=checkpoint,
-                        music_path=music_path,
+                for platform in platforms:
+                    try:
+                        path = self._video_service.assemble_video(
+                            script=script,
+                            platform=platform,
+                            checkpoint=checkpoint,
+                            music_path=music_path,
+                        )
+                        video_paths[platform.value] = path
+                        self.logger.info(
+                            "Video assembly completed for platform",
+                            platform=platform.value,
+                            output_path=str(path),
+                        )
+                    except Exception as e:
+                        video_errors.append(f"Video assembly ({platform.value}): {e}")
+                        errors.append(f"Video assembly ({platform.value}): {e}")
+
+                # Only mark complete if NO video assembly errors
+                if not video_errors:
+                    checkpoint.completed_steps.append("videos")
+                    self.logger.info("All video assembly completed")
+                else:
+                    self.logger.warning(
+                        "Video assembly had errors, not marking complete",
+                        error_count=len(video_errors),
                     )
-                    video_paths[platform.value] = path
-                except Exception as e:
-                    errors.append(f"Video assembly ({platform.value}): {e}")
-
-            checkpoint.completed_steps.append("videos")
+            else:
+                self.logger.info("Skipping video assembly (already completed)")
 
             # Step 5: Generate thumbnails (optional)
-            if thumbnails and not errors:
-                self.logger.info("Generating thumbnails")
+            if thumbnails and not errors and "thumbnails" not in checkpoint.completed_steps:
+                self.logger.info("Starting thumbnail generation...")
                 checkpoint.status = JobStatus.GENERATING_THUMBNAILS
                 # TODO: Implement thumbnail generation
                 checkpoint.completed_steps.append("thumbnails")
+                self.logger.info("Thumbnail generation completed")
 
             # Step 6: Generate subtitles (optional)
-            if subtitles and not errors:
-                self.logger.info("Generating subtitles")
+            if subtitles and not errors and "subtitles" not in checkpoint.completed_steps:
+                self.logger.info("Starting subtitle generation...")
                 checkpoint.status = JobStatus.GENERATING_SUBTITLES
                 # TODO: Implement subtitle generation
                 checkpoint.completed_steps.append("subtitles")
+                self.logger.info("Subtitle generation completed")
 
             # Complete
             checkpoint.status = JobStatus.COMPLETED
             self._save_checkpoint(checkpoint, script)
 
             duration = (datetime.now() - start_time).total_seconds()
+
+            self.logger.info(
+                "Script processing completed",
+                duration_seconds=round(duration, 2),
+                errors_count=len(errors),
+            )
 
             return JobResult(
                 success=len(errors) == 0,
