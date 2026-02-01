@@ -16,7 +16,6 @@ from faceless.core.models import Checkpoint, Scene, Script
 from faceless.utils.logging import LoggerMixin
 
 
-
 class TTSService(LoggerMixin):
     """
     Service for generating text-to-speech audio.
@@ -131,7 +130,9 @@ class TTSService(LoggerMixin):
 
         # Get voice settings
         if voice is None or speed is None:
-            default_voice, default_speed = self._settings.get_voice_settings(script.niche)
+            default_voice, default_speed = self._settings.get_voice_settings(
+                script.niche
+            )
             voice = voice or default_voice
             speed = speed or default_speed
 
@@ -259,7 +260,7 @@ class TTSService(LoggerMixin):
         # Resolve ffprobe path (find in PATH if needed)
         ffprobe = self._settings.ffprobe_path
         use_shell = False
-        
+
         if not (Path(ffprobe).is_absolute() or "/" in ffprobe or "\\" in ffprobe):
             resolved = shutil.which(ffprobe)
             if resolved:
@@ -295,7 +296,7 @@ class TTSService(LoggerMixin):
                     text=True,
                     timeout=30,
                 )
-            
+
             if result.returncode != 0:
                 self.logger.warning(
                     "ffprobe failed",
@@ -303,7 +304,7 @@ class TTSService(LoggerMixin):
                     stderr=result.stderr[:200] if result.stderr else None,
                 )
                 return 0.0
-            
+
             stdout = result.stdout.strip()
             if not stdout:
                 return 0.0

@@ -185,7 +185,7 @@ class Orchestrator(LoggerMixin):
             if enhance and "enhance" not in checkpoint.completed_steps:
                 self.logger.info("Starting script enhancement...")
                 checkpoint.status = JobStatus.ENHANCING
-                
+
                 try:
                     enhanced_script = self._enhancer_service.enhance_script(script)
                     # Update script reference with enhanced version
@@ -224,7 +224,9 @@ class Orchestrator(LoggerMixin):
                         self.logger.info(
                             "Image generation completed for platform",
                             platform=platform.value,
-                            images_generated=len(generated_count) if generated_count else 0,
+                            images_generated=(
+                                len(generated_count) if generated_count else 0
+                            ),
                         )
                     except Exception as e:
                         errors.append(f"Image generation ({platform.value}): {e}")
@@ -299,7 +301,11 @@ class Orchestrator(LoggerMixin):
                 self.logger.info("Skipping video assembly (already completed)")
 
             # Step 5: Generate thumbnails (optional)
-            if thumbnails and not errors and "thumbnails" not in checkpoint.completed_steps:
+            if (
+                thumbnails
+                and not errors
+                and "thumbnails" not in checkpoint.completed_steps
+            ):
                 self.logger.info("Starting thumbnail generation...")
                 checkpoint.status = JobStatus.GENERATING_THUMBNAILS
                 # TODO: Implement thumbnail generation
@@ -307,7 +313,11 @@ class Orchestrator(LoggerMixin):
                 self.logger.info("Thumbnail generation completed")
 
             # Step 6: Generate subtitles (optional)
-            if subtitles and not errors and "subtitles" not in checkpoint.completed_steps:
+            if (
+                subtitles
+                and not errors
+                and "subtitles" not in checkpoint.completed_steps
+            ):
                 self.logger.info("Starting subtitle generation...")
                 checkpoint.status = JobStatus.GENERATING_SUBTITLES
                 # TODO: Implement subtitle generation

@@ -84,10 +84,12 @@ class VideoService(LoggerMixin):
         """
         # Build command - use shell=True on Windows if executable not resolved
         use_shell = self._ffmpeg == "ffmpeg"  # Not resolved to full path
-        
+
         if use_shell:
             # Build command string for shell execution
-            cmd_str = "ffmpeg " + " ".join(f'"{arg}"' if " " in arg else arg for arg in args)
+            cmd_str = "ffmpeg " + " ".join(
+                f'"{arg}"' if " " in arg else arg for arg in args
+            )
             cmd = cmd_str
         else:
             cmd = [self._ffmpeg] + args
@@ -527,7 +529,7 @@ class VideoService(LoggerMixin):
         try:
             # Use shell=True if ffprobe path wasn't resolved
             use_shell = self._ffprobe == "ffprobe"
-            
+
             if use_shell:
                 cmd = f'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "{video_path}"'
                 result = subprocess.run(
@@ -553,7 +555,7 @@ class VideoService(LoggerMixin):
                     text=True,
                     timeout=30,
                 )
-            
+
             stdout = result.stdout.strip()
             if not stdout:
                 return 0.0
