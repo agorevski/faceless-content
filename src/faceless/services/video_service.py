@@ -7,6 +7,7 @@ using FFmpeg for video processing.
 
 import shutil
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from faceless.config import get_settings
@@ -387,7 +388,7 @@ class VideoService(LoggerMixin):
         enable_ken_burns: bool = True,
     ) -> Path:
         """
-        Assemble a complete video from a script.
+        Assemble a complete video from a script using parallel scene processing.
 
         Args:
             script: Script with generated images and audio
@@ -408,39 +409,134 @@ class VideoService(LoggerMixin):
         output_dir = self._settings.get_final_output_dir(script.niche)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        scene_videos: list[Path] = []
+        # Collect scenes that need processing
+        scenes_to_process: list[tuple[Scene, Path]] = []
+        scene_video_paths: dict[int, Path] = {}  # scene_number -> path
 
-        # Create scene videos
         for scene in script.scenes:
+            scene_video_path = (
+                videos_dir / f"scene_{scene.scene_number:02d}_{platform.value}.mp4"
+            )
+
             # Skip if already done
             if checkpoint and checkpoint.is_video_done(
                 platform.value, scene.scene_number
             ):
-                scene_video_path = (
-                    videos_dir / f"scene_{scene.scene_number:02d}_{platform.value}.mp4"
-                )
                 if scene_video_path.exists():
                     self.logger.info(
                         "Skipping existing scene video",
                         scene_number=scene.scene_number,
                     )
-                    scene_videos.append(scene_video_path)
+                    scene_video_paths[scene.scene_number] = scene_video_path
                     continue
 
-            scene_video_path = (
-                videos_dir / f"scene_{scene.scene_number:02d}_{platform.value}.mp4"
+            scenes_to_process.append((scene, scene_video_path))
+
+        # Process scenes in parallel
+        if scenes_to_process:
+            max_concurrent = self._settings.max_concurrent_videos
+            errors: list[str] = []
+
+            self.logger.info(
+                "Starting parallel video scene creation",
+                scenes_to_process=len(scenes_to_process),
+                max_concurrent=max_concurrent,
             )
 
-            self.create_scene_video(
-                scene=scene,
-                platform=platform,
-                output_path=scene_video_path,
-                enable_ken_burns=enable_ken_burns,
-            )
-            scene_videos.append(scene_video_path)
+            # Helper function for thread pool
+            def create_single_scene(
+                scene: Scene,
+                output_path: Path,
+            ) -> tuple[int, Path | None, str | None]:
+                """Create video for a single scene."""
+                try:
+                    width, height = platform.resolution
+                    duration = scene.duration_estimate
 
-            if checkpoint:
-                checkpoint.mark_video_done(platform.value, scene.scene_number)
+                    # Build filter for Ken Burns effect
+                    if enable_ken_burns:
+                        filter_complex = (
+                            f"[0:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
+                            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
+                            f"zoompan=z='min(zoom+0.0005,1.05)':d={int(duration*25)}:s={width}x{height}:fps=25"
+                            f"[v]"
+                        )
+                    else:
+                        filter_complex = (
+                            f"[0:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
+                            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
+                            f"loop=loop=-1:size=1:start=0[v]"
+                        )
+
+                    args = [
+                        "-y",
+                        "-loop", "1",
+                        "-i", str(scene.image_path),
+                        "-i", str(scene.audio_path),
+                        "-filter_complex", filter_complex,
+                        "-map", "[v]",
+                        "-map", "1:a",
+                        "-c:v", "libx264",
+                        "-preset", "medium",
+                        "-crf", "23",
+                        "-c:a", "aac",
+                        "-b:a", "192k",
+                        "-shortest",
+                        "-pix_fmt", "yuv420p",
+                        str(output_path),
+                    ]
+
+                    self._run_ffmpeg(args, f"Creating scene {scene.scene_number} video")
+                    return (scene.scene_number, output_path, None)
+                except Exception as e:
+                    return (scene.scene_number, None, str(e))
+
+            with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
+                future_to_scene = {
+                    executor.submit(create_single_scene, scene, output_path): (scene, output_path)
+                    for scene, output_path in scenes_to_process
+                }
+
+                for future in as_completed(future_to_scene):
+                    scene, output_path = future_to_scene[future]
+                    scene_number, path, error = future.result()
+
+                    if path:
+                        scene.video_path = path
+                        scene_video_paths[scene_number] = path
+                        if checkpoint:
+                            checkpoint.mark_video_done(platform.value, scene_number)
+                        self.logger.info(
+                            "Created scene video",
+                            scene_number=scene_number,
+                            output=str(path),
+                        )
+                    else:
+                        self.logger.error(
+                            "Scene video creation failed",
+                            scene_number=scene_number,
+                            error=error,
+                        )
+                        errors.append(f"Scene {scene_number}: {error}")
+
+            if errors:
+                raise VideoAssemblyError(
+                    message=f"Failed to create {len(errors)} scene video(s)",
+                    stage="scene_video",
+                )
+
+        # Build ordered list of scene videos
+        scene_videos = [
+            scene_video_paths[scene.scene_number]
+            for scene in script.scenes
+            if scene.scene_number in scene_video_paths
+        ]
+
+        if not scene_videos:
+            raise VideoAssemblyError(
+                message="No scene videos to concatenate",
+                stage="concatenation",
+            )
 
         # Concatenate all scenes
         concat_output = videos_dir / f"concat_{platform.value}.mp4"
@@ -460,8 +556,6 @@ class VideoService(LoggerMixin):
             )
         else:
             # Just copy to final location
-            import shutil
-
             shutil.copy2(concat_output, final_output)
 
         self.logger.info(

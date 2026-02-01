@@ -263,6 +263,12 @@ class Settings(BaseSettings):
         le=50,
         description="Maximum concurrent TTS (text-to-speech) requests",
     )
+    max_concurrent_videos: int = Field(
+        default=4,
+        ge=1,
+        le=10,
+        description="Maximum concurrent video scene rendering (FFmpeg processes)",
+    )
     request_timeout: int = Field(
         default=120,
         ge=10,
