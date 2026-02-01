@@ -19,8 +19,7 @@ from datetime import datetime
 # Add pipeline directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from config import PATHS
-from config_validator import validate_for_pipeline
+from env_config import PATHS, validate_config
 from image_generator import generate_from_script as generate_images
 from script_enhancer import enhance_script
 from story_scraper import fetch_and_process_stories, story_to_script
@@ -543,7 +542,7 @@ Examples:
 
     # Validate only mode
     if args.validate_only:
-        success = validate_for_pipeline(args.niche)
+        success = validate_config()
         sys.exit(0 if success else 1)
 
     # Determine platforms

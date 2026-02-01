@@ -20,7 +20,8 @@ class TestAzureOpenAISettings:
         """Test default values are set correctly."""
         from faceless.config.settings import AzureOpenAISettings
 
-        settings = AzureOpenAISettings()
+        # Use _env_file=None to prevent loading from .env
+        settings = AzureOpenAISettings(_env_file=None)
         assert settings.endpoint == ""
         assert settings.api_key == ""
         assert settings.image_deployment == "gpt-image-1"
@@ -62,14 +63,18 @@ class TestAzureOpenAISettings:
         """Test is_configured returns False when endpoint missing."""
         from faceless.config.settings import AzureOpenAISettings
 
-        settings = AzureOpenAISettings(AZURE_OPENAI_API_KEY="test-key")
+        # Use _env_file=None to prevent loading from .env
+        settings = AzureOpenAISettings(_env_file=None, AZURE_OPENAI_API_KEY="test-key")
         assert settings.is_configured is False
 
     def test_is_configured_false_no_key(self) -> None:
         """Test is_configured returns False when key missing."""
         from faceless.config.settings import AzureOpenAISettings
 
-        settings = AzureOpenAISettings(endpoint="https://test.openai.azure.com/")
+        # Use _env_file=None to prevent loading from .env
+        settings = AzureOpenAISettings(
+            _env_file=None, endpoint="https://test.openai.azure.com/"
+        )
         assert settings.is_configured is False
 
 
@@ -163,7 +168,8 @@ class TestSettings:
         """Test default settings values."""
         from faceless.config.settings import Settings
 
-        settings = Settings()
+        # Use _env_file=None to prevent loading from .env
+        settings = Settings(_env_file=None)
         assert settings.log_level == "INFO"
         assert settings.log_json_format is False
         assert settings.debug is False

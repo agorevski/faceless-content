@@ -9,7 +9,7 @@ import subprocess
 import random
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from config import OUTPUT_SETTINGS, PATHS
+from env_config import OUTPUT_SETTINGS, PATHS
 
 
 def get_audio_duration(audio_path: str) -> float:

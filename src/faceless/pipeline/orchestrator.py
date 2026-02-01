@@ -25,6 +25,7 @@ from faceless.services.tts_service import TTSService
 from faceless.services.video_service import VideoService
 from faceless.utils.logging import LoggerMixin, bind_context, clear_context
 
+
 class Orchestrator(LoggerMixin):
     """
     Main pipeline orchestrator.
@@ -259,7 +260,8 @@ class Orchestrator(LoggerMixin):
 
             return JobResult(
                 success=len(errors) == 0,
-                script_path=self._settings.get_scripts_dir(script.niche) / f"{script.safe_title}_script.json",
+                script_path=self._settings.get_scripts_dir(script.niche)
+                / f"{script.safe_title}_script.json",
                 video_paths=video_paths,
                 errors=errors,
                 duration_seconds=duration,
@@ -301,7 +303,8 @@ class Orchestrator(LoggerMixin):
         # Create new checkpoint
         return Checkpoint(
             job_id=uuid4(),
-            script_path=self._settings.get_scripts_dir(script.niche) / f"{script.safe_title}_script.json",
+            script_path=self._settings.get_scripts_dir(script.niche)
+            / f"{script.safe_title}_script.json",
             status=JobStatus.PENDING,
         )
 

@@ -9,7 +9,7 @@ import requests
 import re
 from datetime import datetime
 from typing import Optional
-from config import PATHS
+from env_config import PATHS
 
 
 def clean_text(text: str) -> str:

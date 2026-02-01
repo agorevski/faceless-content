@@ -5,6 +5,7 @@ This module provides a Settings class that loads configuration from
 environment variables and .env files, with validation and type safety.
 """
 
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -13,6 +14,37 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from faceless.core.enums import Niche, Voice
+
+# =============================================================================
+# Output Settings (Video Platform Configuration)
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class OutputConfig:
+    """Video output configuration for a platform."""
+
+    resolution: str
+    fps: int
+    format: str
+    codec: str
+
+
+# Platform-specific output settings
+OUTPUT_SETTINGS: dict[str, OutputConfig] = {
+    "youtube": OutputConfig(
+        resolution="1920x1080",
+        fps=30,
+        format="mp4",
+        codec="libx264",
+    ),
+    "tiktok": OutputConfig(
+        resolution="1080x1920",
+        fps=30,
+        format="mp4",
+        codec="libx264",
+    ),
+}
 
 # =============================================================================
 # Settings Classes
@@ -347,3 +379,97 @@ def reload_settings() -> Settings:
     """
     get_settings.cache_clear()
     return get_settings()
+
+
+def get_output_settings_dict(platform: str) -> dict[str, str | int]:
+    """
+    Get output settings for a platform as a dictionary.
+
+    This provides backward compatibility with legacy code expecting
+    a dict with resolution, fps, format, codec keys.
+
+    Args:
+        platform: One of "youtube" or "tiktok"
+
+    Returns:
+        Dictionary with output settings
+    """
+    config = OUTPUT_SETTINGS.get(platform)
+    if not config:
+        raise ValueError(f"Unknown platform: {platform}")
+    return {
+        "resolution": config.resolution,
+        "fps": config.fps,
+        "format": config.format,
+        "codec": config.codec,
+    }
+
+
+def get_legacy_paths(settings: Settings | None = None) -> dict[str, dict[str, str]]:
+    """
+    Generate a PATHS dictionary compatible with legacy pipeline code.
+
+    This creates the same structure as the old config.py PATHS dict,
+    but using paths derived from the settings.
+
+    Args:
+        settings: Settings instance (defaults to cached settings)
+
+    Returns:
+        Dictionary with paths for each niche and shared resources
+    """
+    if settings is None:
+        settings = get_settings()
+
+    paths: dict[str, dict[str, str]] = {}
+
+    # Add paths for each niche
+    for niche in Niche:
+        niche_key = niche.value  # e.g., "scary-stories"
+        paths[niche_key] = {
+            "scripts": str(settings.get_scripts_dir(niche)),
+            "images": str(settings.get_images_dir(niche)),
+            "audio": str(settings.get_audio_dir(niche)),
+            "videos": str(settings.get_videos_dir(niche)),
+            "output": str(settings.get_final_output_dir(niche)),
+        }
+
+    # Add shared paths
+    paths["shared"] = {
+        "templates": str(settings.get_templates_dir()),
+        "prompts": str(settings.get_prompts_dir()),
+        "music": str(settings.get_music_dir()),
+    }
+
+    return paths
+
+
+def get_legacy_voice_settings(
+    settings: Settings | None = None,
+) -> dict[str, dict[str, str | float]]:
+    """
+    Generate a VOICE_SETTINGS dictionary compatible with legacy pipeline code.
+
+    Args:
+        settings: Settings instance (defaults to cached settings)
+
+    Returns:
+        Dictionary with voice settings for each niche
+    """
+    if settings is None:
+        settings = get_settings()
+
+    voice_settings: dict[str, dict[str, str | float]] = {}
+
+    for niche in Niche:
+        voice, speed = settings.get_voice_settings(niche)
+        niche_key = niche.value
+        elevenlabs_voice_id = settings.elevenlabs.get_voice_id(niche)
+
+        voice_settings[niche_key] = {
+            "openai_voice": voice.value,
+            "openai_speed": speed,
+            "elevenlabs_voice_id": elevenlabs_voice_id,
+        }
+
+    return voice_settings

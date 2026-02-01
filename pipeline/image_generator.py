@@ -10,102 +10,17 @@ import base64
 import requests
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from config import (
+from env_config import (
     AZURE_OPENAI_ENDPOINT,
     AZURE_OPENAI_KEY,
     AZURE_OPENAI_IMAGE_DEPLOYMENT,
     AZURE_OPENAI_IMAGE_API_VERSION,
     IMAGE_SETTINGS,
     PATHS,
+    build_enhanced_prompt,
 )
 
-
-def build_enhanced_prompt(
-    base_prompt: str,
-    niche: str,
-    visual_style: dict = None,
-    scene_context: dict = None,
-) -> str:
-    """
-    Build a cinematically-enhanced prompt for high-quality image generation.
-
-    Args:
-        base_prompt: The original scene description
-        niche: One of "scary-stories", "finance", "luxury"
-        visual_style: Optional story-level visual style overrides from script
-        scene_context: Optional scene-specific context (recurring elements, etc.)
-
-    Returns:
-        Enhanced prompt string optimized for image generation
-    """
-    settings = IMAGE_SETTINGS[niche]
-
-    # Check if this niche has enhanced prompt templates
-    if "prompt_template" not in settings:
-        # Fall back to legacy simple enhancement
-        return (
-            f"{base_prompt}. Style: {settings['style']}. "
-            f"Color palette: {settings['color_palette']}. "
-            f"High quality, detailed, professional."
-        )
-
-    template = settings["prompt_template"]
-    default_style = settings.get("default_visual_style", {})
-
-    # Merge default visual style with any script-specific overrides
-    effective_style = {**default_style}
-    if visual_style:
-        effective_style.update(visual_style)
-
-    # Build the enhanced prompt in a structured way
-    prompt_parts = []
-
-    # 1. Cinematic prefix
-    prompt_parts.append(template.get("prefix", ""))
-
-    # 2. Core scene description (the original prompt, enhanced)
-    prompt_parts.append(base_prompt)
-
-    # 3. Visual continuity elements from story style
-    if effective_style:
-        style_elements = []
-        if "environment" in effective_style:
-            style_elements.append(f"Setting: {effective_style['environment']}")
-        if "recurring_elements" in effective_style:
-            for element_name, element_desc in effective_style[
-                "recurring_elements"
-            ].items():
-                style_elements.append(f"{element_name}: {element_desc}")
-        if style_elements:
-            prompt_parts.append(" | ".join(style_elements))
-
-    # 4. Technical photography details
-    prompt_parts.append(template.get("photography", ""))
-
-    # 5. Lighting direction
-    prompt_parts.append(template.get("lighting", ""))
-
-    # 6. Color grading
-    if "color_mood" in effective_style:
-        prompt_parts.append(f"Color grading: {effective_style['color_mood']}")
-    else:
-        prompt_parts.append(template.get("color_grading", ""))
-
-    # 7. Mood and atmosphere
-    prompt_parts.append(template.get("mood", ""))
-
-    # 8. Texture details
-    if "texture" in effective_style:
-        prompt_parts.append(f"Textures: {effective_style['texture']}")
-
-    # 9. Quality and artistic reference suffix
-    prompt_parts.append(template.get("quality_suffix", ""))
-    prompt_parts.append(template.get("artistic_references", ""))
-
-    # Filter out empty parts and join
-    enhanced_prompt = " ".join(part for part in prompt_parts if part.strip())
-
-    return enhanced_prompt
+# Note: build_enhanced_prompt is imported from env_config (shared/prompts/image_prompts.py)
 
 
 def generate_image(

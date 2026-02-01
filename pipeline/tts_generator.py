@@ -7,7 +7,7 @@ import os
 import requests
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from config import (
+from env_config import (
     AZURE_OPENAI_ENDPOINT,
     AZURE_OPENAI_KEY,
     AZURE_OPENAI_TTS_DEPLOYMENT,
@@ -295,7 +295,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.elevenlabs:
-        from config import USE_ELEVENLABS
+        from env_config import USE_ELEVENLABS
 
         USE_ELEVENLABS = True
 

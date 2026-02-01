@@ -15,6 +15,7 @@ from rich.table import Table
 from faceless import __version__
 from faceless.config import get_settings
 from faceless.core.enums import Niche, Platform
+from faceless.pipeline.orchestrator import Orchestrator
 from faceless.utils.logging import setup_logging
 
 # Create the main app
@@ -197,40 +198,70 @@ def generate(
 
     console.print(f"\n[dim]Output directory: {settings.get_output_dir(niche)}[/]")
 
-    # TODO: Implement pipeline orchestration
-    console.print("\n[yellow]⚠️  Pipeline orchestration not yet implemented[/]")
-    console.print("[dim]The new service layer is being developed...[/]")
+    # Run the pipeline orchestrator
+    orchestrator = Orchestrator()
 
-    # Show what would be done
-    table = Table(title="Pipeline Steps")
-    table.add_column("Step", style="cyan")
-    table.add_column("Status", style="green")
+    console.print("\n[bold]Starting pipeline...[/]\n")
 
-    steps = [
-        ("Fetch/Load Scripts", "pending"),
-        (
-            "Enhance Scripts" if enhance else "Skip Enhancement",
-            "pending" if enhance else "skipped",
-        ),
-        ("Generate Images", "pending"),
-        ("Generate Audio", "pending"),
-        ("Assemble Videos", "pending"),
-        (
-            "Generate Thumbnails" if thumbnails else "Skip Thumbnails",
-            "pending" if thumbnails else "skipped",
-        ),
-        (
-            "Generate Subtitles" if subtitles else "Skip Subtitles",
-            "pending" if subtitles else "skipped",
-        ),
-    ]
-
-    for step, status in steps:
-        table.add_row(
-            step, f"[{'yellow' if status == 'pending' else 'dim'}]{status}[/]"
+    try:
+        results = orchestrator.run(
+            niche=niche,
+            platforms=platform,
+            count=count,
+            script_path=script,
+            enhance=enhance,
+            thumbnails=thumbnails,
+            subtitles=subtitles,
+            music_path=music,
         )
 
-    console.print(table)
+        # Show results
+        table = Table(title="Pipeline Results")
+        table.add_column("Script", style="cyan")
+        table.add_column("Status", style="green")
+        table.add_column("Videos", style="blue")
+        table.add_column("Duration", style="dim")
+
+        for result in results:
+            status = "[green]✓ Success[/]" if result.success else "[red]✗ Failed[/]"
+            video_count = len(result.video_paths)
+            duration = f"{result.duration_seconds:.1f}s"
+            script_name = result.script_path.stem if result.script_path else "Unknown"
+
+            table.add_row(script_name, status, str(video_count), duration)
+
+            # Show errors if any
+            if result.errors:
+                for error in result.errors:
+                    console.print(f"  [red]⚠️  {error}[/]")
+
+        console.print(table)
+
+        # Summary
+        successful = sum(1 for r in results if r.success)
+        failed = len(results) - successful
+
+        if successful > 0:
+            console.print(
+                f"\n[green]✓ {successful} video(s) generated successfully![/]"
+            )
+        if failed > 0:
+            console.print(f"[red]✗ {failed} video(s) failed[/]")
+
+        # Show output locations
+        if results and any(r.video_paths for r in results):
+            console.print("\n[bold]Output files:[/]")
+            for result in results:
+                for plat, path in result.video_paths.items():
+                    console.print(f"  [dim]{plat}:[/] {path}")
+
+    except Exception as e:
+        console.print(f"\n[red]✗ Pipeline failed: {e}[/]")
+        if settings.debug:
+            import traceback
+
+            console.print(f"[dim]{traceback.format_exc()}[/]")
+        raise typer.Exit(1)
 
 
 # =============================================================================

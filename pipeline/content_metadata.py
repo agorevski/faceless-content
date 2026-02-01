@@ -99,22 +99,28 @@ def generate_content_metadata(
             "window_priority": posting_slot["window_priority"],
         },
         # Series info
-        "series": {
-            "name": series_name,
-            "part_number": part_number,
-            "series_hashtag": series_tag,
-        }
-        if series_name
-        else None,
+        "series": (
+            {
+                "name": series_name,
+                "part_number": part_number,
+                "series_hashtag": series_tag,
+            }
+            if series_name
+            else None
+        ),
         # Format info
-        "format": {
-            "name": format_name,
-            "guidance": format_to_prompt_guidance(get_format(niche, format_name))
-            if format_name and get_format(niche, format_name)
-            else None,
-        }
-        if format_name
-        else None,
+        "format": (
+            {
+                "name": format_name,
+                "guidance": (
+                    format_to_prompt_guidance(get_format(niche, format_name))
+                    if format_name and get_format(niche, format_name)
+                    else None
+                ),
+            }
+            if format_name
+            else None
+        ),
         # Analytics targets
         "target_metrics": {
             "first_3_sec_retention": "70%+",

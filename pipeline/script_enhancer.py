@@ -15,7 +15,7 @@ import os
 from datetime import datetime
 
 import requests
-from config import (
+from env_config import (
     AZURE_OPENAI_CHAT_API_VERSION,
     AZURE_OPENAI_CHAT_DEPLOYMENT,
     AZURE_OPENAI_ENDPOINT,

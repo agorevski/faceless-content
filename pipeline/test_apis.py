@@ -8,7 +8,7 @@ import os
 # Add pipeline to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from config import (
+from env_config import (
     AZURE_OPENAI_ENDPOINT,
     AZURE_OPENAI_KEY,
     AZURE_OPENAI_IMAGE_DEPLOYMENT,
