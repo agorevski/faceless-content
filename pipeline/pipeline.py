@@ -16,8 +16,12 @@ import os
 import sys
 from datetime import datetime
 
+from faceless.utils.logging import get_logger, setup_logging
+
 # Add pipeline directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+logger = get_logger(__name__)
 
 from env_config import PATHS, validate_config
 from image_generator import generate_from_script as generate_images
@@ -125,16 +129,16 @@ def full_pipeline(
     if platforms is None:
         platforms = ["youtube", "tiktok"]
 
-    print(f"\n{'='*60}")
-    print("🎬 FACELESS CONTENT PIPELINE")
-    print(f"   Niche: {niche}")
-    print(f"   Platforms: {', '.join(platforms)}")
-    if series_name:
-        print(f"   Series: {series_name}")
-    if tiktok_format:
-        print(f"   Format: {tiktok_format}")
-    print(f"   Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"{'='*60}\n")
+    setup_logging()
+
+    logger.info(
+        "Starting pipeline",
+        niche=niche,
+        platforms=platforms,
+        series=series_name,
+        format=tiktok_format,
+        timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+    )
 
     results = {
         "niche": niche,
@@ -145,8 +149,7 @@ def full_pipeline(
     }
 
     # Step 1: Get scripts
-    print("\n📖 STEP 1: Getting Scripts")
-    print("-" * 40)
+    logger.info("Step 1: Getting scripts")
 
     script_paths = []
 
@@ -154,9 +157,9 @@ def full_pipeline(
         # Use provided script
         if os.path.exists(script_path):
             script_paths = [script_path]
-            print(f"   Using provided script: {script_path}")
+            logger.info("Using provided script", path=script_path)
         else:
-            print(f"   ❌ Script not found: {script_path}")
+            logger.error("Script not found", path=script_path)
             return results
     elif skip_fetch:
         # Use existing scripts in directory
@@ -167,9 +170,9 @@ def full_pipeline(
                 for f in os.listdir(script_dir)
                 if f.endswith("_script.json")
             ][:story_count]
-            print(f"   Found {len(script_paths)} existing scripts")
+            logger.info("Found existing scripts", count=len(script_paths))
         else:
-            print("   ❌ No scripts directory found")
+            logger.error("No scripts directory found")
             return results
     else:
         # Fetch new stories
@@ -178,67 +181,64 @@ def full_pipeline(
     results["scripts"] = script_paths
 
     if not script_paths:
-        print("   ❌ No scripts to process")
+        logger.error("No scripts to process")
         return results
 
     # Step 1.5: Enhance scripts (optional)
     if enhance:
-        print("\n✨ STEP 1.5: Enhancing Scripts with GPT")
-        print("-" * 40)
+        logger.info("Step 1.5: Enhancing scripts with GPT")
         enhanced_paths = []
         for sp in script_paths:
             try:
                 enhanced_path = enhance_script(sp, niche)
                 enhanced_paths.append(enhanced_path)
             except Exception as e:
-                print(f"   ⚠️ Enhancement failed for {sp}: {e}")
-                print("   Continuing with original script...")
+                logger.warning(
+                    "Enhancement failed, continuing with original",
+                    script=sp,
+                    error=str(e),
+                )
                 enhanced_paths.append(sp)
                 results["errors"].append(f"Enhancement: {e}")
         script_paths = enhanced_paths
 
     # Process each script
     for script_path in script_paths:
-        print(f"\n{'='*60}")
-        print(f"Processing: {os.path.basename(script_path)}")
-        print(f"{'='*60}")
+        logger.info("Processing script", script=os.path.basename(script_path))
 
         try:
             # Step 2: Generate Images
-            print("\n🎨 STEP 2: Generating Images")
-            print("-" * 40)
+            logger.info("Step 2: Generating images")
 
             for platform in platforms:
-                print(f"\n   Platform: {platform}")
+                logger.info("Generating images for platform", platform=platform)
                 try:
                     image_paths = generate_images(script_path, niche, platform)
-                    print(
-                        f"   ✅ Generated {len([p for p in image_paths if p])} images"
+                    logger.info(
+                        "Images generated",
+                        platform=platform,
+                        count=len([p for p in image_paths if p]),
                     )
                 except Exception as e:
-                    print(f"   ❌ Image generation failed: {e}")
+                    logger.error("Image generation failed", platform=platform, error=str(e))
                     results["errors"].append(f"Images ({platform}): {e}")
 
             # Step 3: Generate Audio
-            print("\n🎙️ STEP 3: Generating Audio")
-            print("-" * 40)
+            logger.info("Step 3: Generating audio")
 
             try:
                 audio_paths = generate_audio(script_path, niche)
-                print(
-                    f"   ✅ Generated {len([p for p in audio_paths if p])} audio files"
-                )
+                logger.info("Audio files generated", count=len([p for p in audio_paths if p]))
             except Exception as e:
-                print(f"   ❌ Audio generation failed: {e}")
+                logger.error("Audio generation failed", error=str(e))
                 results["errors"].append(f"Audio: {e}")
                 continue
 
             # Step 4: Assemble Videos
-            print("\n🎬 STEP 4: Assembling Videos")
-            print("-" * 40)
+            logger.info("Step 4: Assembling videos")
 
             for platform in platforms:
-                print(f"\n   Platform: {platform}")
+                logger.info("Assembling video for platform", platform=platform)
                 try:
                     video_path = assemble_from_script(
                         script_path,
@@ -299,56 +299,53 @@ def full_pipeline(
                                 "optimal_posting"
                             ]["formatted"]
 
-                            print(
-                                f"   📱 Metadata saved: {os.path.basename(metadata_path)}"
-                            )
-                            print(
-                                f"   🏷️ Hashtags: {metadata['hashtag_string'][:50]}..."
-                            )
-                            print(
-                                f"   ⏰ Best posting: {metadata['optimal_posting']['formatted']}"
+                            logger.info(
+                                "Metadata saved",
+                                metadata_path=os.path.basename(metadata_path),
+                                hashtags=metadata['hashtag_string'][:50],
+                                best_posting_time=metadata['optimal_posting']['formatted'],
                             )
 
                         except Exception as e:
-                            print(f"   ⚠️ Metadata generation failed: {e}")
+                            logger.warning("Metadata generation failed", error=str(e))
 
                     results["videos"].append(video_info)
-                    print(f"   ✅ Created: {video_path}")
+                    logger.info("Video created", path=video_path)
 
                     # Create TikTok cuts if this is a long YouTube video
                     if platform == "youtube" and "tiktok" in platforms:
-                        print("\n   ✂️ Creating TikTok cuts...")
+                        logger.info("Creating TikTok cuts")
                         tiktok_dir = os.path.join(PATHS[niche]["output"], "tiktok_cuts")
                         cuts = create_tiktok_cuts(video_path, tiktok_dir)
-                        print(f"   ✅ Created {len(cuts)} TikTok segments")
+                        logger.info("TikTok segments created", count=len(cuts))
 
                 except Exception as e:
-                    print(f"   ❌ Video assembly failed: {e}")
+                    logger.error("Video assembly failed", platform=platform, error=str(e))
                     results["errors"].append(f"Video ({platform}): {e}")
 
         except Exception as e:
-            print(f"\n❌ Failed to process script: {e}")
+            logger.error("Failed to process script", script=script_path, error=str(e))
             results["errors"].append(f"Script {script_path}: {e}")
 
     # Summary
-    print(f"\n{'='*60}")
-    print("📊 PIPELINE SUMMARY")
-    print(f"{'='*60}")
-    print(f"   Scripts processed: {len(script_paths)}")
-    print(f"   Videos created: {len(results['videos'])}")
-    print(f"   Errors: {len(results['errors'])}")
+    logger.info(
+        "Pipeline complete",
+        scripts_processed=len(script_paths),
+        videos_created=len(results['videos']),
+        error_count=len(results['errors']),
+    )
 
     if results["videos"]:
-        print("\n   Created Videos:")
         for video in results["videos"]:
-            print(f"   - {video['path']}")
-            if "optimal_posting_time" in video:
-                print(f"     Post at: {video['optimal_posting_time']}")
+            logger.info(
+                "Created video",
+                path=video['path'],
+                optimal_posting_time=video.get('optimal_posting_time'),
+            )
 
     if results["errors"]:
-        print("\n   Errors encountered:")
         for error in results["errors"]:
-            print(f"   - {error}")
+            logger.error("Error encountered", error=error)
 
     return results
 

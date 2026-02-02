@@ -1,10 +1,18 @@
 """
 Hooks Module - TikTok Retention & Engagement System
+
+⚠️ NOTE: No modern equivalent exists yet in src/faceless/services/.
+This module will be migrated in a future update.
+
 Implements first-frame hooks, pattern interrupts, mid-video retention,
 and comment bait strategies from FUTURE_IMPROVEMENTS.md
 """
 
 import random
+
+from faceless.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 # =============================================================================
 # FIRST-FRAME HOOKS (0.5-Second Attention Window)
@@ -1733,7 +1741,6 @@ ALL_NICHES = list(FIRST_FRAME_HOOKS.keys())
 
 if __name__ == "__main__":
     import argparse
-    import json
 
     parser = argparse.ArgumentParser(
         description="Generate engagement hooks for TikTok content"
@@ -1756,8 +1763,7 @@ if __name__ == "__main__":
 
     if args.full:
         package = generate_engagement_package(args.niche)
-        print(json.dumps(package, indent=2))
+        logger.info("Generated engagement package", niche=args.niche, package=package)
     else:
         hook = get_first_frame_hook(args.niche)
-        print(f"Hook: {hook['text']}")
-        print(f"Type: {hook['type']}")
+        logger.info("Generated hook", hook_text=hook["text"], hook_type=hook["type"])

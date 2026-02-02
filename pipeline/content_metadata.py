@@ -1,5 +1,9 @@
 """
 Content Metadata Module
+
+⚠️ NOTE: No modern equivalent exists yet in src/faceless/services/.
+This module will be migrated in a future update.
+
 Generates complete posting metadata for videos including captions,
 hashtags, posting times, and engagement recommendations
 """
@@ -8,6 +12,7 @@ import json
 import os
 from datetime import datetime
 
+from faceless.utils.logging import get_logger
 from hashtags import (
     generate_hashtag_set,
     get_format_specific_hashtags,
@@ -15,6 +20,8 @@ from hashtags import (
 from hooks import generate_engagement_package
 from posting_schedule import get_next_optimal_slot
 from tiktok_formats import format_to_prompt_guidance, get_format
+
+logger = get_logger(__name__)
 
 # =============================================================================
 # METADATA STRUCTURE
@@ -412,8 +419,8 @@ if __name__ == "__main__":
 
     if args.output:
         save_metadata(metadata, args.output)
-        print(f"Saved to: {args.output}")
+        logger.info("Metadata saved", output_path=args.output)
     elif args.json:
-        print(json.dumps(metadata, indent=2, default=str))
+        logger.info("Metadata generated", metadata=json.dumps(metadata, indent=2, default=str))
     else:
-        print(format_metadata_for_display(metadata))
+        logger.info("Metadata display", content=format_metadata_for_display(metadata))

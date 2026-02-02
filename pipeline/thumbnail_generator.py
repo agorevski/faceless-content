@@ -1,25 +1,30 @@
 """
 Thumbnail Generator Module
+
+⚠️ NOTE: No modern equivalent exists yet in src/faceless/services/.
+This module will be migrated in a future update.
+
 Creates click-worthy thumbnails using AI image generation
 Thumbnails are 80% of click-through rate - this is critical for views
 """
 
+import base64
+import json
 import os
 import sys
-import json
-import base64
-import requests
 from datetime import datetime
-from typing import Optional, List, Dict
+from typing import Dict, List, Optional
 
-# Add pipeline directory to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import requests
+from faceless.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 from env_config import (
     AZURE_OPENAI_ENDPOINT,
-    AZURE_OPENAI_KEY,
-    AZURE_OPENAI_IMAGE_DEPLOYMENT,
     AZURE_OPENAI_IMAGE_API_VERSION,
+    AZURE_OPENAI_IMAGE_DEPLOYMENT,
+    AZURE_OPENAI_KEY,
     PATHS,
 )
 
@@ -178,7 +183,7 @@ def generate_thumbnail(
 
     # Skip if already exists
     if os.path.exists(output_path):
-        print(f"🖼️ Thumbnail already exists: {output_path}")
+        logger.info("Thumbnail already exists", path=output_path)
         return output_path
 
     url = (
@@ -199,8 +204,7 @@ def generate_thumbnail(
         "n": 1,
     }
 
-    print(f"🖼️ Generating thumbnail: {output_name}")
-    print(f"   Prompt: {prompt[:80]}...")
+    logger.info("Generating thumbnail", name=output_name, prompt_preview=prompt[:80])
 
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=120)
@@ -226,13 +230,13 @@ def generate_thumbnail(
             with open(prompt_path, "w", encoding="utf-8") as f:
                 f.write(prompt)
 
-            print(f"   ✅ Saved: {output_path}")
+            logger.info("Thumbnail saved", path=output_path)
             return output_path
         else:
             raise ValueError(f"No image data in response: {result}")
 
     except requests.exceptions.RequestException as e:
-        print(f"   ❌ Error: {e}")
+        logger.error("Thumbnail generation failed", error=str(e))
         raise
 
 
@@ -268,7 +272,7 @@ def generate_thumbnail_variants(
     # Limit to requested number
     concepts = concepts[:num_variants]
 
-    print(f"\n🎨 Generating {len(concepts)} thumbnail variants for: {title}")
+    logger.info("Generating thumbnail variants", count=len(concepts), title=title)
 
     paths = []
     for i, concept in enumerate(concepts, 1):
@@ -279,7 +283,7 @@ def generate_thumbnail_variants(
             path = generate_thumbnail(prompt, niche, output_name)
             paths.append(path)
         except Exception as e:
-            print(f"   ⚠️ Failed variant {i}: {e}")
+            logger.warning("Failed to generate variant", variant=i, error=str(e))
             paths.append(None)
 
     return paths
@@ -415,7 +419,5 @@ if __name__ == "__main__":
             args.title, args.niche, base_name, args.variants
         )
 
-    print(f"\n📊 Text Overlay Instructions:")
     instructions = create_text_overlay_instructions(args.title, args.niche)
-    for key, value in instructions.items():
-        print(f"   {key}: {value}")
+    logger.info("Text overlay instructions", **instructions)

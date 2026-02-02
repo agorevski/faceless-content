@@ -1,11 +1,19 @@
 """
 Text Overlay Module
+
+⚠️ NOTE: No modern equivalent exists yet in src/faceless/services/.
+This module will be migrated in a future update.
+
 Generates text overlay configurations for hooks, CTAs, and engagement elements
 Designed for FFmpeg subtitle/text filter integration
 """
 
 from dataclasses import dataclass, field
 from enum import Enum
+
+from faceless.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class TextPosition(Enum):
@@ -453,13 +461,17 @@ if __name__ == "__main__":
     elif args.type == "countdown":
         overlays = create_countdown_overlays(10.0)
         for o in overlays:
-            print(f"  {o.text}: {o.start_time}s - {o.end_time}s")
+            logger.info("Countdown overlay", text=o.text, start_time=o.start_time, end_time=o.end_time)
         exit()
 
     if args.ffmpeg:
-        print(overlay_to_ffmpeg_filter(overlay))
+        logger.info("FFmpeg filter", filter=overlay_to_ffmpeg_filter(overlay))
     else:
-        print(f"Text: {overlay.text}")
-        print(f"Position: {overlay.position.value}")
-        print(f"Time: {overlay.start_time}s - {overlay.end_time}s")
-        print(f"Animation: {overlay.animation.value}")
+        logger.info(
+            "Overlay created",
+            text=overlay.text,
+            position=overlay.position.value,
+            start_time=overlay.start_time,
+            end_time=overlay.end_time,
+            animation=overlay.animation.value,
+        )

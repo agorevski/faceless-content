@@ -1,10 +1,18 @@
 """
 TikTok-Native Content Formats Module
+
+⚠️ NOTE: No modern equivalent exists yet in src/faceless/services/.
+This module will be migrated in a future update.
+
 Defines specialized content formats optimized for TikTok engagement
 Based on FUTURE_IMPROVEMENTS.md format recommendations
 """
 
 from dataclasses import dataclass
+
+from faceless.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 # =============================================================================
 # FORMAT DEFINITIONS
@@ -518,18 +526,18 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.list:
-        print(f"\nFormats for {args.niche}:")
+        logger.info("Listing formats", niche=args.niche)
         for name in get_format_names(args.niche):
             fmt = get_format(args.niche, name)
-            print(f"  - {name}: {fmt.description[:60]}...")
+            logger.info("Format available", name=name, description=fmt.description[:60])
     elif args.format:
         fmt = get_format(args.niche, args.format)
         if fmt:
-            print(format_to_prompt_guidance(fmt))
+            logger.info("Format details", guidance=format_to_prompt_guidance(fmt))
         else:
-            print(f"Format '{args.format}' not found for niche '{args.niche}'")
+            logger.warning("Format not found", format_name=args.format, niche=args.niche)
     else:
         fmt = get_random_format(args.niche)
         if fmt:
-            print(f"Random format: {fmt.name}")
-            print(format_to_prompt_guidance(fmt))
+            logger.info("Random format selected", name=fmt.name)
+            logger.info("Format guidance", guidance=format_to_prompt_guidance(fmt))

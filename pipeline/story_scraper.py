@@ -1,15 +1,23 @@
 """
 Story Scraper Module
+
+⚠️ NOTE: Partially replaced by faceless.services.research_service and
+faceless.services.trending_service. Consider using those for new code.
+
 Fetches content from various free sources for video scripts
 """
 
-import os
 import json
-import requests
+import os
 import re
 from datetime import datetime
 from typing import Optional
+
+import requests
 from env_config import PATHS
+from faceless.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def clean_text(text: str) -> str:
@@ -63,7 +71,7 @@ def fetch_reddit_stories(
     }
     headers = {"User-Agent": "FacelessContent/1.0 (Educational Project)"}
 
-    print(f"📖 Fetching stories from r/{subreddit}...")
+    logger.info("Fetching stories from subreddit", subreddit=subreddit)
 
     try:
         response = requests.get(url, params=params, headers=headers, timeout=30)
@@ -97,11 +105,11 @@ def fetch_reddit_stories(
             if len(stories) >= limit:
                 break
 
-        print(f"   ✅ Found {len(stories)} stories")
+        logger.info("Found stories", count=len(stories), subreddit=subreddit)
         return stories
 
     except requests.exceptions.RequestException as e:
-        print(f"   ❌ Error: {e}")
+        logger.error("Failed to fetch stories", subreddit=subreddit, error=str(e))
         return []
 
 
@@ -150,7 +158,7 @@ def save_story(story: dict, niche: str, filename: str = None) -> str:
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(story, f, indent=2, ensure_ascii=False)
 
-    print(f"   💾 Saved: {output_path}")
+    logger.info("Story saved", path=output_path)
     return output_path
 
 
@@ -361,9 +369,7 @@ def fetch_and_process_stories(
         List of paths to saved script files
     """
 
-    print(f"\n{'='*60}")
-    print(f"Fetching {count} stories for {niche}")
-    print(f"{'='*60}\n")
+    logger.info("Starting story fetch", niche=niche, count=count)
 
     # Different sources for different niches
     if niche == "scary-stories":
@@ -377,7 +383,7 @@ def fetch_and_process_stories(
     elif niche == "luxury":
         stories = fetch_reddit_stories("luxury", limit=count)
     else:
-        print(f"Unknown niche: {niche}")
+        logger.warning("Unknown niche specified", niche=niche)
         return []
 
     script_paths = []
@@ -397,7 +403,7 @@ def fetch_and_process_stories(
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(script, f, indent=2, ensure_ascii=False)
 
-        print(f"   📝 Script: {output_path}")
+        logger.info("Script created", path=output_path, title=story["title"][:50])
         script_paths.append(output_path)
 
     return script_paths

@@ -1,15 +1,33 @@
 """
-Video Assembler Module
-Combines images and audio into final videos using FFmpeg
+Video Assembler Module - LEGACY WRAPPER.
+
+⚠️ DEPRECATED: This module is a backward-compatibility wrapper.
+Please use faceless.services.video_service.VideoService for new code.
+
+This wrapper delegates to the modern implementation in src/faceless/services/
+while maintaining the original API for existing scripts.
 """
 
-import os
 import json
-import subprocess
+import os
 import random
-from datetime import datetime
+import subprocess
+import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# Issue deprecation warning on import
+warnings.warn(
+    "pipeline/video_assembler.py is deprecated. "
+    "Use faceless.services.video_service.VideoService instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
+# Import legacy config for backward compatibility
 from env_config import OUTPUT_SETTINGS, PATHS
+from faceless.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def get_audio_duration(audio_path: str) -> float:
@@ -57,6 +75,8 @@ def create_video_from_image_and_audio(
 ) -> str:
     """
     Create a video from a single image and audio file.
+
+    ⚠️ DEPRECATED: Use VideoService.create_scene_video() instead.
 
     Args:
         image_path: Path to the image
@@ -148,7 +168,7 @@ def create_video_from_image_and_audio(
                 f"d={total_frames}:s={target_width}x{target_height}:fps={settings['fps']}[v]"
             )
 
-            print(f"   📐 TikTok crop+pan mode: {pan_direction} pan")
+            logger.debug("TikTok crop+pan mode", pan_direction=pan_direction)
 
         else:
             # YouTube or TikTok with portrait source: Ken Burns zoom from center
@@ -187,17 +207,19 @@ def create_video_from_image_and_audio(
         output_path,
     ]
 
-    print(f"🎬 Creating video segment...")
-    print(f"   Image: {os.path.basename(image_path)}")
-    print(f"   Audio: {os.path.basename(audio_path)}")
+    logger.info(
+        "Creating video segment",
+        image=os.path.basename(image_path),
+        audio=os.path.basename(audio_path),
+    )
 
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     if result.returncode != 0:
-        print(f"   ❌ Error: {result.stderr}")
+        logger.error("FFmpeg error creating video segment", error=result.stderr)
         raise RuntimeError(f"FFmpeg error: {result.stderr}")
 
-    print(f"   ✅ Created: {output_path}")
+    logger.info("Video segment created", output=output_path)
     return output_path
 
 
@@ -207,6 +229,8 @@ def concatenate_videos(
 ) -> str:
     """
     Concatenate multiple videos into one.
+
+    ⚠️ DEPRECATED: Use VideoService.concatenate_scenes() instead.
 
     Args:
         video_paths: List of paths to video files
@@ -238,7 +262,7 @@ def concatenate_videos(
         output_path,
     ]
 
-    print(f"🎬 Concatenating {len(video_paths)} videos...")
+    logger.info("Concatenating videos", count=len(video_paths))
 
     result = subprocess.run(cmd, capture_output=True, text=True)
 
@@ -246,10 +270,10 @@ def concatenate_videos(
     os.remove(list_path)
 
     if result.returncode != 0:
-        print(f"   ❌ Error: {result.stderr}")
+        logger.error("FFmpeg error concatenating videos", error=result.stderr)
         raise RuntimeError(f"FFmpeg error: {result.stderr}")
 
-    print(f"   ✅ Created: {output_path}")
+    logger.info("Concatenated video created", output=output_path)
     return output_path
 
 
@@ -261,6 +285,8 @@ def add_background_music(
 ) -> str:
     """
     Add background music to a video, mixed with existing audio.
+
+    ⚠️ DEPRECATED: Use VideoService.add_background_music() instead.
 
     Args:
         video_path: Path to the video
@@ -294,15 +320,15 @@ def add_background_music(
         output_path,
     ]
 
-    print(f"🎵 Adding background music...")
+    logger.info("Adding background music", music_volume=music_volume)
 
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     if result.returncode != 0:
-        print(f"   ❌ Error: {result.stderr}")
+        logger.error("FFmpeg error adding background music", error=result.stderr)
         raise RuntimeError(f"FFmpeg error: {result.stderr}")
 
-    print(f"   ✅ Created: {output_path}")
+    logger.info("Video with music created", output=output_path)
     return output_path
 
 
@@ -344,15 +370,15 @@ def add_subtitles(
         output_path,
     ]
 
-    print(f"📝 Adding subtitles...")
+    logger.info("Adding subtitles", subtitle_path=subtitle_path)
 
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     if result.returncode != 0:
-        print(f"   ❌ Error: {result.stderr}")
+        logger.error("FFmpeg error adding subtitles", error=result.stderr)
         raise RuntimeError(f"FFmpeg error: {result.stderr}")
 
-    print(f"   ✅ Created: {output_path}")
+    logger.info("Video with subtitles created", output=output_path)
     return output_path
 
 
@@ -401,6 +427,8 @@ def assemble_from_script(
     """
     Assemble a complete video from a script with generated assets.
 
+    ⚠️ DEPRECATED: Use VideoService.assemble_video() instead.
+
     Assumes images and audio have already been generated using the
     image_generator and tts_generator modules.
 
@@ -436,8 +464,10 @@ def assemble_from_script(
         segment_path = os.path.join(paths["videos"], f"{base_name}_{i:03d}.mp4")
         tasks.append((i, image_path, audio_path, segment_path, platform))
 
-    print(
-        f"🎬 Creating {len(tasks)} video segments in parallel (max_workers={max_workers})..."
+    logger.info(
+        "Creating video segments in parallel",
+        segment_count=len(tasks),
+        max_workers=max_workers,
     )
 
     # Execute tasks in parallel
@@ -450,9 +480,9 @@ def assemble_from_script(
             results.append(result)
             scene_index, segment_path, success, error, skipped = result
             if skipped:
-                print(f"   ⏭️ Scene {scene_index}: Already exists, skipping")
+                logger.debug("Scene already exists, skipping", scene_index=scene_index)
             elif not success:
-                print(f"   ⚠️ Scene {scene_index}: {error}")
+                logger.warning("Scene processing failed", scene_index=scene_index, error=error)
 
     # Sort results by scene index to maintain order
     results.sort(key=lambda x: x[0])
@@ -469,8 +499,11 @@ def assemble_from_script(
 
     created_count = sum(1 for r in results if r[2] and not r[4])
     skipped_count = sum(1 for r in results if r[4])
-    print(
-        f"   ✅ {created_count} created, {skipped_count} skipped, {len(segment_paths)} total"
+    logger.info(
+        "Video segments processed",
+        created=created_count,
+        skipped=skipped_count,
+        total=len(segment_paths),
     )
 
     # Concatenate all segments
@@ -544,7 +577,7 @@ def create_tiktok_cuts(
         start_time += segment_duration - overlap
         part += 1
 
-    print(f"✂️ Created {len(segment_paths)} TikTok segments")
+    logger.info("TikTok segments created", count=len(segment_paths))
     return segment_paths
 
 

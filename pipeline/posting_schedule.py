@@ -1,11 +1,19 @@
 """
 Posting Schedule Module
+
+⚠️ NOTE: No modern equivalent exists yet in src/faceless/services/.
+This module will be migrated in a future update.
+
 Implements optimal posting time strategies from FUTURE_IMPROVEMENTS.md
 Provides niche-specific timing recommendations for maximum reach
 """
 
 import random
 from datetime import datetime, time, timedelta
+
+from faceless.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 # =============================================================================
 # OPTIMAL POSTING WINDOWS BY NICHE
@@ -425,14 +433,27 @@ if __name__ == "__main__":
 
     if args.next:
         slot = get_next_optimal_slot(args.niche)
-        print(f"\n⏰ Next optimal posting time for {args.niche}:")
-        print(f"   {slot['formatted']}")
-        print(f"   Priority: {slot['window_priority']}")
-        print(f"   Day rating: {slot['day_rating']['performance']}")
+        logger.info(
+            "Next optimal posting time",
+            niche=args.niche,
+            formatted=slot["formatted"],
+            priority=slot["window_priority"],
+            day_rating=slot["day_rating"]["performance"],
+        )
     elif args.week:
         schedule = generate_weekly_schedule(args.niche, args.posts)
-        print(format_schedule_for_display(schedule))
+        logger.info(
+            "Weekly schedule generated",
+            niche=args.niche,
+            posts_per_day=args.posts,
+            total_slots=len(schedule),
+        )
+        logger.debug("Schedule details", schedule=format_schedule_for_display(schedule))
     else:
         optimal = get_optimal_posting_time(args.niche)
-        print(f"\n⏰ Suggested posting time for {args.niche}:")
-        print(f"   {optimal.strftime('%A, %I:%M %p')}")
+        logger.info(
+            "Suggested posting time",
+            niche=args.niche,
+            day=optimal.strftime("%A"),
+            time=optimal.strftime("%I:%M %p"),
+        )

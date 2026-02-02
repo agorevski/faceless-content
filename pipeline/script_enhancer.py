@@ -1,5 +1,9 @@
 """
-Script Enhancer Module
+Script Enhancer Module - LEGACY WRAPPER.
+
+⚠️ DEPRECATED: This module is a backward-compatibility wrapper.
+Please use faceless.services.enhancer_service.EnhancerService for new code.
+
 Uses Azure OpenAI GPT to enhance scripts for maximum engagement on YouTube/TikTok
 Focuses on catchy storytelling, visual consistency, and scroll-stopping content
 
@@ -12,15 +16,28 @@ Enhanced with TikTok retention strategies from FUTURE_IMPROVEMENTS.md:
 
 import json
 import os
+import warnings
 from datetime import datetime
 
 import requests
+
+# Issue deprecation warning on import
+warnings.warn(
+    "pipeline/script_enhancer.py is deprecated. "
+    "Use faceless.services.enhancer_service.EnhancerService instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 from env_config import (
     AZURE_OPENAI_CHAT_API_VERSION,
     AZURE_OPENAI_CHAT_DEPLOYMENT,
     AZURE_OPENAI_ENDPOINT,
     AZURE_OPENAI_KEY,
 )
+from faceless.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 # Import hook system for engagement generation
 try:
@@ -1032,7 +1049,7 @@ def call_gpt(system_prompt: str, user_prompt: str) -> str:
         "response_format": {"type": "json_object"},  # Ensure JSON response
     }
 
-    print("   🤖 Calling GPT for enhancement...")
+    logger.info("Calling GPT for enhancement")
 
     response = requests.post(url, headers=headers, json=payload, timeout=180)
     response.raise_for_status()
@@ -1072,7 +1089,7 @@ def _ensure_engagement_elements(script: dict, niche: str) -> dict:
             "text": hook["text"],
             "type": hook["type"],
         }
-        print("   🪝 Added fallback first-frame hook")
+        logger.info("Added fallback first-frame hook")
 
     # Ensure mid_video_hook exists
     if "mid_video_hook" not in script or not script["mid_video_hook"]:
@@ -1083,7 +1100,7 @@ def _ensure_engagement_elements(script: dict, niche: str) -> dict:
             "text": mid_hook["content"],
             "insert_after_scene": insert_after,
         }
-        print("   📍 Added fallback mid-video hook")
+        logger.info("Added fallback mid-video hook")
 
     # Ensure comment_trigger exists
     if "comment_trigger" not in script or not script["comment_trigger"]:
@@ -1092,7 +1109,7 @@ def _ensure_engagement_elements(script: dict, niche: str) -> dict:
             "text": trigger["content"],
             "type": trigger["type"],
         }
-        print("   💬 Added fallback comment trigger")
+        logger.info("Added fallback comment trigger")
 
     # Ensure loop_structure exists
     if "loop_structure" not in script or not script["loop_structure"]:
@@ -1101,7 +1118,7 @@ def _ensure_engagement_elements(script: dict, niche: str) -> dict:
             "type": loop["type"],
             "description": loop["description"],
         }
-        print("   🔄 Added fallback loop structure")
+        logger.info("Added fallback loop structure")
 
     return script
 
@@ -1124,8 +1141,7 @@ def enhance_script(
     Returns:
         Path to the enhanced script
     """
-    print(f"\n✨ Enhancing script: {os.path.basename(script_path)}")
-    print(f"   Niche: {niche}")
+    logger.info("Enhancing script", script=os.path.basename(script_path), niche=niche)
 
     # Load original script
     with open(script_path, encoding="utf-8") as f:
@@ -1133,7 +1149,7 @@ def enhance_script(
 
     # Check if already enhanced
     if original_script.get("enhanced_at"):
-        print("   ℹ️ Script already enhanced, skipping...")
+        logger.info("Script already enhanced, skipping", script=os.path.basename(script_path))
         return script_path
 
     # Backup original if requested
@@ -1142,12 +1158,11 @@ def enhance_script(
         if not os.path.exists(backup_path):
             with open(backup_path, "w", encoding="utf-8") as f:
                 json.dump(original_script, f, indent=2, ensure_ascii=False)
-            print(f"   📋 Backup saved: {os.path.basename(backup_path)}")
+            logger.info("Backup saved", backup=os.path.basename(backup_path))
 
     # Get enhancement prompts for this niche
     if niche not in ENHANCEMENT_PROMPTS:
-        print(f"   ⚠️ No enhancement prompts for niche: {niche}")
-        print("   Using generic enhancement...")
+        logger.warning("No enhancement prompts for niche, using generic", niche=niche)
         prompts = ENHANCEMENT_PROMPTS["scary-stories"]  # Fallback
     else:
         prompts = ENHANCEMENT_PROMPTS[niche]
@@ -1187,35 +1202,28 @@ def enhance_script(
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(enhanced_script, f, indent=2, ensure_ascii=False)
 
-        print(f"   ✅ Enhanced script saved: {output_path}")
-        print(f"   📊 Scenes: {len(enhanced_script['scenes'])}")
+        logger.info("Enhanced script saved", output_path=output_path, scenes=len(enhanced_script['scenes']))
 
         if "visual_style" in enhanced_script:
-            print("   🎨 Visual style: Generated")
+            logger.info("Visual style generated")
 
         # Report engagement elements
         if "first_frame_hook" in enhanced_script:
-            print(
-                f"   🪝 Hook: {enhanced_script['first_frame_hook'].get('text', 'N/A')[:50]}..."
-            )
+            logger.info("Hook generated", hook=enhanced_script['first_frame_hook'].get('text', 'N/A')[:50])
         if "comment_trigger" in enhanced_script:
-            print(
-                f"   💬 CTA: {enhanced_script['comment_trigger'].get('text', 'N/A')[:50]}..."
-            )
+            logger.info("CTA generated", cta=enhanced_script['comment_trigger'].get('text', 'N/A')[:50])
 
         return output_path
 
     except requests.exceptions.RequestException as e:
-        print(f"   ❌ API Error: {e}")
-        if hasattr(e, "response") and e.response is not None:
-            print(f"   Response: {e.response.text[:500]}")
+        response_text = e.response.text[:500] if hasattr(e, "response") and e.response is not None else None
+        logger.error("API error during enhancement", error=str(e), response=response_text)
         raise
     except json.JSONDecodeError as e:
-        print(f"   ❌ JSON Parse Error: {e}")
-        print(f"   Response was: {enhanced_json[:500]}...")
+        logger.error("JSON parse error", error=str(e), response=enhanced_json[:500])
         raise
     except Exception as e:
-        print(f"   ❌ Enhancement failed: {e}")
+        logger.error("Enhancement failed", error=str(e))
         raise
 
 
@@ -1240,7 +1248,7 @@ def enhance_scripts_batch(
             enhanced_path = enhance_script(path, niche)
             enhanced_paths.append(enhanced_path)
         except Exception as e:
-            print(f"   ⚠️ Skipping {path}: {e}")
+            logger.warning("Skipping script due to error", path=path, error=str(e))
             enhanced_paths.append(path)  # Keep original on failure
 
     return enhanced_paths

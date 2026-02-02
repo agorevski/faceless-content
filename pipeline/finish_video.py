@@ -6,6 +6,10 @@ import os
 import sys
 import subprocess
 
+from faceless.utils.logging import get_logger
+
+logger = get_logger(__name__)
+
 # Paths
 BASE = r"C:\Users\kat_l\clawd\faceless-content\scary-stories"
 IMAGES = os.path.join(BASE, "images")
@@ -39,11 +43,11 @@ def create_segment(i):
     output = os.path.join(VIDEOS, f"stairs-in-the-woods_script_{i:03d}.mp4")
 
     if os.path.exists(output):
-        print(f"   Segment {i} already exists, skipping")
+        logger.debug("Segment already exists, skipping", segment=i)
         return output
 
     if not os.path.exists(image) or not os.path.exists(audio):
-        print(f"   Missing assets for segment {i}")
+        logger.warning("Missing assets for segment", segment=i)
         return None
 
     duration = get_audio_duration(audio)
@@ -73,14 +77,14 @@ def create_segment(i):
         output,
     ]
 
-    print(f"   Creating segment {i}...")
+    logger.info("Creating segment", segment=i)
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     if result.returncode != 0:
-        print(f"   Error: {result.stderr[:200]}")
+        logger.error("Segment creation failed", segment=i, error=result.stderr[:200])
         return None
 
-    print(f"   ✅ Created segment {i}")
+    logger.info("Segment created successfully", segment=i)
     return output
 
 
@@ -93,7 +97,7 @@ def concatenate_all():
             segments.append(seg)
 
     if len(segments) != 7:
-        print(f"   Only {len(segments)} segments found, expected 7")
+        logger.warning("Unexpected segment count", found=len(segments), expected=7)
         return None
 
     # Create concat file
@@ -119,34 +123,31 @@ def concatenate_all():
         output,
     ]
 
-    print("   Concatenating all segments...")
+    logger.info("Concatenating all segments")
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     if result.returncode != 0:
-        print(f"   Error: {result.stderr[:200]}")
+        logger.error("Concatenation failed", error=result.stderr[:200])
         return None
 
-    print(f"   ✅ Final video: {output}")
+    logger.info("Final video created", output=output)
     return output
 
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("Finishing video assembly...")
-    print("=" * 60)
+    logger.info("Starting video assembly")
 
     # Create any missing segments
-    print("\n📹 Creating missing segments...")
+    logger.info("Creating missing segments")
     for i in range(1, 8):
         create_segment(i)
 
     # Concatenate
-    print("\n🎬 Concatenating final video...")
+    logger.info("Concatenating final video")
     final = concatenate_all()
 
     if final:
         size = os.path.getsize(final) / (1024 * 1024)
-        print(f"\n✅ DONE! Final video: {final}")
-        print(f"   Size: {size:.1f} MB")
+        logger.info("Video assembly complete", output=final, size_mb=round(size, 1))
     else:
-        print("\n❌ Failed to create final video")
+        logger.error("Failed to create final video")

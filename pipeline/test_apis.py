@@ -8,6 +8,10 @@ import os
 # Add pipeline to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from faceless.utils.logging import get_logger
+
+logger = get_logger(__name__)
+
 from env_config import (
     AZURE_OPENAI_ENDPOINT,
     AZURE_OPENAI_KEY,
@@ -21,9 +25,7 @@ from env_config import (
 
 def test_tts():
     """Test Azure OpenAI TTS"""
-    print("\n" + "=" * 50)
-    print("🎙️ Testing Azure OpenAI TTS...")
-    print("=" * 50)
+    logger.info("Testing Azure OpenAI TTS")
 
     import requests
 
@@ -54,22 +56,20 @@ def test_tts():
         with open(output_path, "wb") as f:
             f.write(response.content)
 
-        print(f"✅ TTS SUCCESS! Saved to: {output_path}")
-        print(f"   File size: {len(response.content):,} bytes")
+        logger.info("TTS SUCCESS", output_path=str(output_path), file_size_bytes=len(response.content))
         return True
 
     except Exception as e:
-        print(f"❌ TTS FAILED: {e}")
+        error_response = None
         if hasattr(e, "response") and e.response is not None:
-            print(f"   Response: {e.response.text}")
+            error_response = e.response.text
+        logger.error("TTS FAILED", error=str(e), response=error_response)
         return False
 
 
 def test_image():
     """Test Azure OpenAI Image Generation"""
-    print("\n" + "=" * 50)
-    print("🎨 Testing Azure OpenAI Image Generation...")
-    print("=" * 50)
+    logger.info("Testing Azure OpenAI Image Generation")
 
     import requests
     import base64
@@ -89,7 +89,7 @@ def test_image():
     }
 
     try:
-        print("   Generating image (this may take 30-60 seconds)...")
+        logger.info("Generating image", note="this may take 30-60 seconds")
         response = requests.post(url, headers=headers, json=payload, timeout=120)
         response.raise_for_status()
         result = response.json()
@@ -114,25 +114,23 @@ def test_image():
             with open(output_path, "wb") as f:
                 f.write(img_bytes)
 
-            print(f"✅ IMAGE SUCCESS! Saved to: {output_path}")
-            print(f"   File size: {len(img_bytes):,} bytes")
+            logger.info("IMAGE SUCCESS", output_path=str(output_path), file_size_bytes=len(img_bytes))
             return True
         else:
-            print(f"❌ No image data in response: {result}")
+            logger.error("No image data in response", response=result)
             return False
 
     except Exception as e:
-        print(f"❌ IMAGE FAILED: {e}")
+        error_response = None
         if hasattr(e, "response") and e.response is not None:
-            print(f"   Response: {e.response.text}")
+            error_response = e.response.text
+        logger.error("IMAGE FAILED", error=str(e), response=error_response)
         return False
 
 
 def test_ffmpeg():
     """Test FFmpeg"""
-    print("\n" + "=" * 50)
-    print("🎬 Testing FFmpeg...")
-    print("=" * 50)
+    logger.info("Testing FFmpeg")
 
     import subprocess
 
@@ -142,20 +140,18 @@ def test_ffmpeg():
         )
         if result.returncode == 0:
             version_line = result.stdout.split("\n")[0]
-            print(f"✅ FFMPEG SUCCESS! {version_line}")
+            logger.info("FFMPEG SUCCESS", version=version_line)
             return True
         else:
-            print(f"❌ FFmpeg error: {result.stderr}")
+            logger.error("FFmpeg error", stderr=result.stderr)
             return False
     except Exception as e:
-        print(f"❌ FFmpeg not found: {e}")
+        logger.error("FFmpeg not found", error=str(e))
         return False
 
 
 if __name__ == "__main__":
-    print("\n" + "=" * 50)
-    print("🧪 FACELESS CONTENT PIPELINE - API TEST")
-    print("=" * 50)
+    logger.info("FACELESS CONTENT PIPELINE - API TEST")
 
     results = {
         "FFmpeg": test_ffmpeg(),
@@ -163,18 +159,16 @@ if __name__ == "__main__":
         "Image": test_image(),
     }
 
-    print("\n" + "=" * 50)
-    print("📊 TEST SUMMARY")
-    print("=" * 50)
+    logger.info("TEST SUMMARY")
 
     all_passed = True
     for name, passed in results.items():
-        status = "✅ PASS" if passed else "❌ FAIL"
-        print(f"   {name}: {status}")
+        status = "PASS" if passed else "FAIL"
+        logger.info("Test result", test=name, status=status)
         if not passed:
             all_passed = False
 
     if all_passed:
-        print("\n🎉 All tests passed! Ready to produce content!")
+        logger.info("All tests passed! Ready to produce content!")
     else:
-        print("\n⚠️ Some tests failed. Check the errors above.")
+        logger.warning("Some tests failed. Check the errors above.")

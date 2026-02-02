@@ -1,10 +1,18 @@
 """
 Hashtag Strategy Module
+
+⚠️ NOTE: No modern equivalent exists yet in src/faceless/services/.
+This module will be migrated in a future update.
+
 Implements the hashtag ladder system from FUTURE_IMPROVEMENTS.md
 Provides niche-specific hashtag recommendations for maximum reach
 """
 
 import random
+
+from faceless.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 # =============================================================================
 # HASHTAG LADDER SYSTEM
@@ -1257,17 +1265,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.list:
-        print(f"\nHashtags for {args.niche}:\n")
+        logger.info("Listing hashtags", niche=args.niche)
         all_tags = get_all_hashtags(args.niche)
         for level, tags in all_tags.items():
-            print(f"  {level.upper()}:")
-            print(f"    {', '.join(tags)}\n")
+            logger.info("Hashtag level", level=level.upper(), tags=", ".join(tags))
     elif args.analyze:
         analysis = analyze_hashtag_coverage(args.analyze, args.niche)
-        print("\nHashtag Analysis:")
-        for key, value in analysis.items():
-            print(f"  {key}: {value}")
+        logger.info("Hashtag analysis complete", **analysis)
     else:
         hashtags = generate_hashtag_string(args.niche, args.series)
-        print(f"\nGenerated hashtags for {args.niche}:")
-        print(f"  {hashtags}")
+        logger.info("Generated hashtags", niche=args.niche, hashtags=hashtags)

@@ -1,18 +1,23 @@
 """
 Subtitle Generator Module
+
+⚠️ NOTE: No modern equivalent exists yet in src/faceless/services/.
+This module will be migrated in a future update.
+
 Creates SRT/VTT subtitle files from audio using Azure Speech-to-Text
 Supports word-level timestamps for animated captions (TikTok style)
 """
 
-import os
-import sys
 import json
+import os
 import subprocess
+import sys
 from datetime import datetime
-from typing import List, Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
-# Add pipeline directory to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from faceless.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 from env_config import (
     AZURE_OPENAI_ENDPOINT,
@@ -162,7 +167,7 @@ def create_subtitles_from_script(
     with open(vtt_path, "w", encoding="utf-8") as f:
         f.write("\n".join(vtt_entries))
 
-    print(f"📝 Created subtitles: {srt_path}")
+    logger.info("Created subtitles", path=srt_path)
     return srt_path, vtt_path
 
 
@@ -193,7 +198,7 @@ def create_subtitles_from_audio(
 
     # Check if already exists
     if os.path.exists(srt_path) and os.path.exists(vtt_path):
-        print(f"📝 Subtitles already exist: {srt_path}")
+        logger.info("Subtitles already exist", path=srt_path)
         return srt_path, vtt_path
 
     # For now, we'll create a placeholder with audio duration
@@ -218,8 +223,8 @@ def create_subtitles_from_audio(
     with open(vtt_path, "w", encoding="utf-8") as f:
         f.write(vtt_content)
 
-    print(f"📝 Created placeholder subtitles: {srt_path}")
-    print("   ℹ️  For accurate subtitles, use create_subtitles_from_script()")
+    logger.info("Created placeholder subtitles", path=srt_path)
+    logger.info("For accurate subtitles, use create_subtitles_from_script()")
 
     return srt_path, vtt_path
 
@@ -295,14 +300,14 @@ def burn_subtitles_to_video(
         output_path,
     ]
 
-    print(f"🎬 Burning subtitles into video...")
+    logger.info("Burning subtitles into video", video=video_path, subtitle=subtitle_path)
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     if result.returncode != 0:
-        print(f"   ❌ Error: {result.stderr[:200]}")
+        logger.error("FFmpeg subtitle burn failed", error=result.stderr[:200])
         raise RuntimeError(f"FFmpeg subtitle burn failed: {result.stderr}")
 
-    print(f"   ✅ Created: {output_path}")
+    logger.info("Created video with subtitles", path=output_path)
     return output_path
 
 
@@ -373,7 +378,7 @@ def generate_animated_captions(
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(output_data, f, indent=2)
 
-    print(f"📝 Created animated caption data: {output_path}")
+    logger.info("Created animated caption data", path=output_path, word_count=len(captions))
     return output_path
 
 
@@ -391,7 +396,7 @@ def generate_all_subtitle_formats(
     Returns:
         Dict with paths to all generated files
     """
-    print(f"\n📝 Generating all subtitle formats...")
+    logger.info("Generating all subtitle formats", script=script_path, niche=niche)
 
     srt_path, vtt_path = create_subtitles_from_script(script_path, niche)
     captions_path = generate_animated_captions(script_path, niche)
@@ -447,6 +452,6 @@ if __name__ == "__main__":
     else:
         srt_path, vtt_path = create_subtitles_from_script(args.script, args.niche)
         if args.format == "srt":
-            print(f"Created: {srt_path}")
+            logger.info("Created subtitle file", path=srt_path, format="srt")
         else:
-            print(f"Created: {vtt_path}")
+            logger.info("Created subtitle file", path=vtt_path, format="vtt")

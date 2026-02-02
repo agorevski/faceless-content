@@ -17,6 +17,10 @@ _src_path = Path(__file__).parent.parent / "src"
 if str(_src_path) not in sys.path:
     sys.path.insert(0, str(_src_path))
 
+from faceless.utils.logging import get_logger
+
+logger = get_logger(__name__)
+
 # Add shared directory to path for prompt imports
 _shared_path = Path(__file__).parent.parent / "shared"
 if str(_shared_path) not in sys.path:
@@ -225,47 +229,46 @@ def validate_config() -> bool:
 
     if errors:
         for error in errors:
-            print(f"❌ {error}")
+            logger.error("Configuration error", error=error)
         return False
 
-    print("✅ Configuration validated successfully")
+    logger.info("Configuration validated successfully")
     return True
 
 
 def print_config_summary() -> None:
     """Print a summary of the current configuration."""
-    print("\n" + "=" * 60)
-    print("📋 CONFIGURATION SUMMARY (from .env)")
-    print("=" * 60)
+    logger.info("Configuration summary loaded from .env")
 
-    print(f"\n🔷 Azure OpenAI:")
-    print(
-        f"   Endpoint: {AZURE_OPENAI_ENDPOINT[:50]}..."
-        if AZURE_OPENAI_ENDPOINT
-        else "   Endpoint: Not set"
+    logger.info(
+        "Azure OpenAI configuration",
+        endpoint=f"{AZURE_OPENAI_ENDPOINT[:50]}..." if AZURE_OPENAI_ENDPOINT else "Not set",
+        api_key_set=bool(AZURE_OPENAI_KEY),
+        image_deployment=AZURE_OPENAI_IMAGE_DEPLOYMENT,
+        chat_deployment=AZURE_OPENAI_CHAT_DEPLOYMENT,
+        tts_deployment=AZURE_OPENAI_TTS_DEPLOYMENT,
     )
-    print(f"   API Key: {'*' * 10}..." if AZURE_OPENAI_KEY else "   API Key: Not set")
-    print(f"   Image Deployment: {AZURE_OPENAI_IMAGE_DEPLOYMENT}")
-    print(f"   Chat Deployment: {AZURE_OPENAI_CHAT_DEPLOYMENT}")
-    print(f"   TTS Deployment: {AZURE_OPENAI_TTS_DEPLOYMENT}")
 
-    print(f"\n🔷 ElevenLabs:")
-    print(f"   Enabled: {USE_ELEVENLABS}")
-    if USE_ELEVENLABS:
-        print(f"   API Key: {'Set' if ELEVENLABS_API_KEY else 'Not set'}")
+    logger.info(
+        "ElevenLabs configuration",
+        enabled=USE_ELEVENLABS,
+        api_key_set=bool(ELEVENLABS_API_KEY) if USE_ELEVENLABS else None,
+    )
 
-    print(f"\n🔷 Output Settings:")
-    print(f"   Base Dir: {_settings.output_base_dir}")
-    print(f"   YouTube: {OUTPUT_SETTINGS['youtube']['resolution']}")
-    print(f"   TikTok: {OUTPUT_SETTINGS['tiktok']['resolution']}")
+    logger.info(
+        "Output settings",
+        base_dir=str(_settings.output_base_dir),
+        youtube_resolution=OUTPUT_SETTINGS["youtube"]["resolution"],
+        tiktok_resolution=OUTPUT_SETTINGS["tiktok"]["resolution"],
+    )
 
-    print(f"\n🔷 Processing:")
-    print(f"   Max Concurrent Requests: {MAX_CONCURRENT_REQUESTS}")
-    print(f"   Request Timeout: {REQUEST_TIMEOUT}s")
-    print(f"   Retry Enabled: {ENABLE_RETRY}")
-    print(f"   Debug Mode: {DEBUG}")
-
-    print("\n" + "=" * 60 + "\n")
+    logger.info(
+        "Processing settings",
+        max_concurrent_requests=MAX_CONCURRENT_REQUESTS,
+        request_timeout_seconds=REQUEST_TIMEOUT,
+        retry_enabled=ENABLE_RETRY,
+        debug_mode=DEBUG,
+    )
 
 
 # =============================================================================
