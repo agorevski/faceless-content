@@ -8,6 +8,7 @@ and comment bait strategies from FUTURE_IMPROVEMENTS.md
 """
 
 import random
+from typing import Any, cast
 
 from faceless.utils.logging import get_logger
 
@@ -1544,8 +1545,8 @@ LOOP_STRUCTURES = {
 
 def get_first_frame_hook(
     niche: str,
-    hook_type: str = None,
-    custom_context: str = None,
+    hook_type: str | None = None,
+    custom_context: str | None = None,
 ) -> dict:
     """
     Get a first-frame hook for a video.
@@ -1583,7 +1584,7 @@ def get_first_frame_hook(
     }
 
 
-def get_pattern_interrupt(interrupt_type: str = None) -> dict:
+def get_pattern_interrupt(interrupt_type: str | None = None) -> dict:
     """
     Get a pattern interrupt technique.
 
@@ -1605,7 +1606,7 @@ def get_pattern_interrupt(interrupt_type: str = None) -> dict:
     }
 
 
-def get_mid_video_hook(niche: str, hook_format: str = None) -> dict:
+def get_mid_video_hook(niche: str, hook_format: str | None = None) -> dict:
     """
     Get a mid-video retention hook.
 
@@ -1619,14 +1620,18 @@ def get_mid_video_hook(niche: str, hook_format: str = None) -> dict:
     if hook_format is None:
         hook_format = random.choice(["verbal", "text_overlay"])
 
+    hook_content: str
     if hook_format == "verbal":
-        if niche not in MID_VIDEO_HOOKS["verbal"]:
+        verbal_hooks = cast(dict[str, list[str]], MID_VIDEO_HOOKS["verbal"])
+        if niche not in verbal_hooks:
             niche = "scary-stories"
-        hook_content = random.choice(MID_VIDEO_HOOKS["verbal"][niche])
+        hook_content = random.choice(verbal_hooks[niche])
     elif hook_format == "text_overlay":
-        hook_content = random.choice(MID_VIDEO_HOOKS["text_overlay"])
+        text_overlays = cast(list[str], MID_VIDEO_HOOKS["text_overlay"])
+        hook_content = random.choice(text_overlays)
     else:
-        hook_content = random.choice(MID_VIDEO_HOOKS["visual_cues"])
+        visual_cues = cast(list[str], MID_VIDEO_HOOKS["visual_cues"])
+        hook_content = random.choice(visual_cues)
 
     return {
         "format": hook_format,
@@ -1636,7 +1641,7 @@ def get_mid_video_hook(niche: str, hook_format: str = None) -> dict:
     }
 
 
-def get_comment_trigger(niche: str, trigger_type: str = None) -> dict:
+def get_comment_trigger(niche: str, trigger_type: str | None = None) -> dict:
     """
     Get a comment-triggering ending.
 
@@ -1657,18 +1662,25 @@ def get_comment_trigger(niche: str, trigger_type: str = None) -> dict:
             ]
         )
 
+    content: str
     if trigger_type == "controversial_endings":
-        if niche not in COMMENT_TRIGGERS["controversial_endings"]:
+        controversial = cast(
+            dict[str, list[str]], COMMENT_TRIGGERS["controversial_endings"]
+        )
+        if niche not in controversial:
             niche = "scary-stories"
-        content = random.choice(COMMENT_TRIGGERS["controversial_endings"][niche])
+        content = random.choice(controversial[niche])
     elif trigger_type == "opinion_requests":
-        content = random.choice(COMMENT_TRIGGERS["opinion_requests"])
+        opinion_requests = cast(list[str], COMMENT_TRIGGERS["opinion_requests"])
+        content = random.choice(opinion_requests)
     elif trigger_type == "fill_in_blank":
-        if niche not in COMMENT_TRIGGERS["fill_in_blank"]:
+        fill_in_blank = cast(dict[str, list[str]], COMMENT_TRIGGERS["fill_in_blank"])
+        if niche not in fill_in_blank:
             niche = "scary-stories"
-        content = random.choice(COMMENT_TRIGGERS["fill_in_blank"][niche])
+        content = random.choice(fill_in_blank[niche])
     else:
-        content = random.choice(COMMENT_TRIGGERS["part_2_bait"])
+        part_2_bait = cast(list[str], COMMENT_TRIGGERS["part_2_bait"])
+        content = random.choice(part_2_bait)
 
     return {
         "type": trigger_type,
@@ -1692,7 +1704,7 @@ def get_pinned_comment(niche: str) -> str:
     return random.choice(PINNED_COMMENTS[niche])
 
 
-def get_loop_structure(loop_type: str = None) -> dict:
+def get_loop_structure(loop_type: str | None = None) -> dict[Any, Any]:
     """
     Get loop structure guidance.
 
@@ -1705,7 +1717,8 @@ def get_loop_structure(loop_type: str = None) -> dict:
     if loop_type is None:
         loop_type = random.choice(list(LOOP_STRUCTURES.keys()))
 
-    structure = LOOP_STRUCTURES[loop_type].copy()
+    loop_data = cast(dict[str, Any], LOOP_STRUCTURES[loop_type])
+    structure: dict[Any, Any] = dict(loop_data)
     structure["type"] = loop_type
 
     return structure

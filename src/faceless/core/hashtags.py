@@ -1019,7 +1019,7 @@ TRENDING_TOPICS = {
 
 def generate_hashtag_set(
     niche: str,
-    series_tag: str = None,
+    series_tag: str | None = None,
     include_trending: bool = True,
     total_count: int = 7,
 ) -> list:
@@ -1072,7 +1072,7 @@ def generate_hashtag_set(
 
 def generate_hashtag_string(
     niche: str,
-    series_tag: str = None,
+    series_tag: str | None = None,
     include_trending: bool = True,
 ) -> str:
     """
@@ -1141,41 +1141,44 @@ def analyze_hashtag_coverage(hashtags: list, niche: str) -> dict:
     ladder = HASHTAG_LADDER[niche]
     normalized = [h.lower() for h in hashtags]
 
-    analysis = {
-        "total_count": len(hashtags),
-        "mega_count": sum(
-            1 for h in normalized if h in [t.lower() for t in ladder["mega"]]
-        ),
-        "broad_count": sum(
-            1 for h in normalized if h in [t.lower() for t in ladder["niche_broad"]]
-        ),
-        "specific_count": sum(
-            1 for h in normalized if h in [t.lower() for t in ladder["niche_specific"]]
-        ),
-        "has_series": any(
-            h.lower() in [t.lower() for t in ladder["series_suggestions"]]
-            for h in normalized
-        ),
-        "recommendations": [],
-    }
+    # Calculate counts
+    mega_count = sum(1 for h in normalized if h in [t.lower() for t in ladder["mega"]])
+    broad_count = sum(
+        1 for h in normalized if h in [t.lower() for t in ladder["niche_broad"]]
+    )
+    specific_count = sum(
+        1 for h in normalized if h in [t.lower() for t in ladder["niche_specific"]]
+    )
+    has_series = any(
+        h.lower() in [t.lower() for t in ladder["series_suggestions"]]
+        for h in normalized
+    )
+    total_count = len(hashtags)
+
+    recommendations: list[str] = []
 
     # Generate recommendations
-    if analysis["mega_count"] == 0:
-        analysis["recommendations"].append(
-            "Add at least 1 mega hashtag (#fyp, #foryou)"
-        )
-    if analysis["broad_count"] < 2:
-        analysis["recommendations"].append("Add more niche broad hashtags")
-    if analysis["specific_count"] < 2:
-        analysis["recommendations"].append("Add more niche specific hashtags")
-    if not analysis["has_series"]:
-        analysis["recommendations"].append("Consider adding a series/branded hashtag")
-    if analysis["total_count"] < 5:
-        analysis["recommendations"].append("Use 5-7 hashtags for optimal reach")
-    if analysis["total_count"] > 10:
-        analysis["recommendations"].append("Consider reducing to 5-7 hashtags")
+    if mega_count == 0:
+        recommendations.append("Add at least 1 mega hashtag (#fyp, #foryou)")
+    if broad_count < 2:
+        recommendations.append("Add more niche broad hashtags")
+    if specific_count < 2:
+        recommendations.append("Add more niche specific hashtags")
+    if not has_series:
+        recommendations.append("Consider adding a series/branded hashtag")
+    if total_count < 5:
+        recommendations.append("Use 5-7 hashtags for optimal reach")
+    if total_count > 10:
+        recommendations.append("Consider reducing to 5-7 hashtags")
 
-    return analysis
+    return {
+        "total_count": total_count,
+        "mega_count": mega_count,
+        "broad_count": broad_count,
+        "specific_count": specific_count,
+        "has_series": has_series,
+        "recommendations": recommendations,
+    }
 
 
 # =============================================================================

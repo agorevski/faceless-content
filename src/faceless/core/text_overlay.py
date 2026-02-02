@@ -460,7 +460,12 @@ if __name__ == "__main__":
     elif args.type == "countdown":
         overlays = create_countdown_overlays(10.0)
         for o in overlays:
-            logger.info("Countdown overlay", text=o.text, start_time=o.start_time, end_time=o.end_time)
+            logger.info(
+                "Countdown overlay",
+                text=o.text,
+                start_time=o.start_time,
+                end_time=o.end_time,
+            )
         exit()
 
     if args.ffmpeg:

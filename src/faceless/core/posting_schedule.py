@@ -9,6 +9,7 @@ Provides niche-specific timing recommendations for maximum reach
 
 import random
 from datetime import datetime, time, timedelta
+from typing import Any, cast
 
 from faceless.utils.logging import get_logger
 
@@ -169,7 +170,7 @@ FREQUENCY_RECOMMENDATIONS = {
 
 def get_optimal_posting_time(
     niche: str,
-    target_date: datetime = None,
+    target_date: datetime | None = None,
     prefer_high_priority: bool = True,
 ) -> datetime:
     """
@@ -189,7 +190,7 @@ def get_optimal_posting_time(
     if niche not in POSTING_WINDOWS:
         niche = "scary-stories"
 
-    windows = POSTING_WINDOWS[niche]["best_times"]
+    windows = cast(list[dict[str, Any]], POSTING_WINDOWS[niche]["best_times"])
 
     if prefer_high_priority:
         high_priority = [w for w in windows if w.get("priority") == "high"]
@@ -221,7 +222,7 @@ def get_optimal_posting_time(
 
 def get_day_rating(
     target_date: datetime,
-    niche: str = None,
+    niche: str | None = None,
 ) -> dict:
     """
     Get the performance rating for a specific day.
@@ -234,15 +235,16 @@ def get_day_rating(
         Dict with day rating information
     """
     day_of_week = target_date.weekday()
-    pattern = DAY_PATTERNS[day_of_week]
+    pattern: dict[str, Any] = DAY_PATTERNS[day_of_week]
 
-    rating = pattern.copy()
+    rating: dict[str, Any] = pattern.copy()
     rating["day_name"] = target_date.strftime("%A")
 
     # Check for special niche bonuses
-    if niche and "special_niches" in pattern and niche in pattern["special_niches"]:
+    special_niches = pattern.get("special_niches", [])
+    if niche and isinstance(special_niches, list) and niche in special_niches:
         rating["niche_bonus"] = True
-        rating["multiplier"] = pattern["multiplier"] * 1.1
+        rating["multiplier"] = float(pattern["multiplier"]) * 1.1
 
     return rating
 
@@ -250,7 +252,7 @@ def get_day_rating(
 def generate_weekly_schedule(
     niche: str,
     posts_per_day: int = 1,
-    start_date: datetime = None,
+    start_date: datetime | None = None,
 ) -> list:
     """
     Generate a full week posting schedule.
@@ -304,7 +306,7 @@ def generate_weekly_schedule(
 
 def get_next_optimal_slot(
     niche: str,
-    after: datetime = None,
+    after: datetime | None = None,
 ) -> dict:
     """
     Get the next optimal posting slot after a given time.
@@ -328,7 +330,7 @@ def get_next_optimal_slot(
         if day_rating["multiplier"] < 0.9 and hours_ahead < 24:
             continue
 
-        windows = POSTING_WINDOWS[niche]["best_times"]
+        windows = cast(list[dict[str, Any]], POSTING_WINDOWS[niche]["best_times"])
         for window in windows:
             window_start = check_time.replace(
                 hour=window["start"].hour,

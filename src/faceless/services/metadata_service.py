@@ -31,10 +31,10 @@ def generate_content_metadata(
     niche: str,
     title: str,
     video_duration: float,
-    format_name: str = None,
-    series_name: str = None,
-    part_number: int = None,
-    custom_caption: str = None,
+    format_name: str | None = None,
+    series_name: str | None = None,
+    part_number: int | None = None,
+    custom_caption: str | None = None,
 ) -> dict:
     """
     Generate complete posting metadata for a video.
@@ -119,8 +119,8 @@ def generate_content_metadata(
             {
                 "name": format_name,
                 "guidance": (
-                    format_to_prompt_guidance(get_format(niche, format_name))
-                    if format_name and get_format(niche, format_name)
+                    format_to_prompt_guidance(fmt)
+                    if format_name and (fmt := get_format(niche, format_name))
                     else None
                 ),
             }
@@ -144,8 +144,8 @@ def _build_caption(
     title: str,
     hook: str,
     comment_trigger: str,
-    series_name: str = None,
-    part_number: int = None,
+    series_name: str | None = None,
+    part_number: int | None = None,
 ) -> str:
     """
     Build an engaging caption for the video.
@@ -212,7 +212,8 @@ def load_metadata(metadata_path: str) -> dict:
         Metadata dict
     """
     with open(metadata_path, encoding="utf-8") as f:
-        return json.load(f)
+        result: dict = json.load(f)
+        return result
 
 
 # =============================================================================
@@ -224,8 +225,8 @@ def generate_series_metadata(
     niche: str,
     series_name: str,
     titles: list,
-    video_durations: list = None,
-    format_name: str = None,
+    video_durations: list | None = None,
+    format_name: str | None = None,
 ) -> list:
     """
     Generate metadata for a series of videos.
@@ -295,12 +296,12 @@ def format_metadata_for_display(metadata: dict) -> str:
         "",
         "🪝 FIRST FRAME HOOK:",
         "-" * 40,
-        f"  \"{metadata['first_frame_hook']['text']}\"",
+        f'  "{metadata["first_frame_hook"]["text"]}"',
         f"  Type: {metadata['first_frame_hook']['type']}",
         "",
         "💬 PINNED COMMENT:",
         "-" * 40,
-        f"  \"{metadata['pinned_comment_suggestion']}\"",
+        f'  "{metadata["pinned_comment_suggestion"]}"',
         "",
         "⏰ OPTIMAL POSTING:",
         "-" * 40,
@@ -420,6 +421,8 @@ if __name__ == "__main__":
         save_metadata(metadata, args.output)
         logger.info("Metadata saved", output_path=args.output)
     elif args.json:
-        logger.info("Metadata generated", metadata=json.dumps(metadata, indent=2, default=str))
+        logger.info(
+            "Metadata generated", metadata=json.dumps(metadata, indent=2, default=str)
+        )
     else:
         logger.info("Metadata display", content=format_metadata_for_display(metadata))

@@ -465,7 +465,8 @@ def get_random_format(niche: str) -> TikTokFormat | None:
     formats = get_all_formats_for_niche(niche)
     if not formats:
         return None
-    return random.choice(list(formats.values()))
+    result: TikTokFormat = random.choice(list(formats.values()))
+    return result
 
 
 def format_to_prompt_guidance(format_obj: TikTokFormat) -> str:
@@ -528,13 +529,18 @@ if __name__ == "__main__":
         logger.info("Listing formats", niche=args.niche)
         for name in get_format_names(args.niche):
             fmt = get_format(args.niche, name)
-            logger.info("Format available", name=name, description=fmt.description[:60])
+            if fmt:
+                logger.info(
+                    "Format available", name=name, description=fmt.description[:60]
+                )
     elif args.format:
         fmt = get_format(args.niche, args.format)
         if fmt:
             logger.info("Format details", guidance=format_to_prompt_guidance(fmt))
         else:
-            logger.warning("Format not found", format_name=args.format, niche=args.niche)
+            logger.warning(
+                "Format not found", format_name=args.format, niche=args.niche
+            )
     else:
         fmt = get_random_format(args.niche)
         if fmt:
