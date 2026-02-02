@@ -1,56 +1,58 @@
 # YouTube Content Quality Improvements
 
+> **Last Updated:** February 2026  
+> **Status:** Core services implemented ✅
+
 ## Overview
 
 This document outlines improvements to create exceptionally high-quality YouTube content through deep research, advanced scripting, and multi-video content strategies. These enhancements focus on creating authoritative, well-researched content that stands out from typical faceless channel output.
+
+### Implementation Status
+
+| Feature | Service | Status | CLI Command |
+|---------|---------|--------|-------------|
+| Deep Research | `DeepResearchService` | ✅ Implemented | `faceless research` |
+| Script Quality Scoring | `QualityService` | ✅ Implemented | `faceless quality` |
+| Trending Topics | `TrendingService` | ✅ Implemented | `faceless trending` |
+| Multi-Video Planning | `ContentGraphService` | 🔲 Planned | - |
+| Expert Persona Review | `ExpertReviewService` | 🔲 Planned | - |
 
 ---
 
 ## 🔬 DEEP RESEARCH INTEGRATION
 
-### 1. Pre-Script Deep Research Phase
+### ✅ DeepResearchService (Implemented)
 
-Before any script creation, implement a comprehensive research phase using advanced AI models.
+The `DeepResearchService` conducts comprehensive research before script creation.
 
-#### Research Pipeline Architecture
+#### Quick Start
 
+```bash
+# Standard research (10-15 min depth)
+faceless research "Why diamonds are artificially expensive" -n luxury
+
+# Deep research for flagship content (30-60 min depth)  
+faceless research "The 2008 financial crisis explained" -n finance -d deep
+
+# Investigative research for documentary-style (2-4 hour depth)
+faceless research "The complete history of cryptocurrency" -n finance -d investigative -o research.json
 ```
-Topic Selection
-       ↓
-Deep Research (Gemini 2.0 / GPT-5.0 / Claude)
-       ↓
-Source Verification & Fact-Checking
-       ↓
-Content Outline Generation
-       ↓
-Multi-Video Planning (if warranted)
-       ↓
-Script Generation
-       ↓
-Expert Review Pass (AI simulation)
-       ↓
-Final Script Polish
-```
-
-#### Implementation: Deep Research Service
-
-Create a new `DeepResearchService` that:
-
-1. **Topic Expansion**: Takes a topic and generates 20-30 related questions that comprehensive coverage would require answering
-2. **Multi-Source Research**: Queries multiple AI models (Gemini, GPT-5.0, Claude) for diverse perspectives
-3. **Web Search Integration**: Uses Bing/Google APIs to find recent articles, studies, and primary sources
-4. **Academic Search**: Integrates with Google Scholar, arXiv, or PubMed for scientific topics
-5. **Fact Verification**: Cross-references claims across sources, flags contradictions
-6. **Citation Generation**: Creates bibliography of sources for video description
 
 #### Research Depth Levels
 
-| Level | Use Case | Research Time | Output |
-|-------|----------|---------------|--------|
-| **Quick** | Trending topics, time-sensitive | 2-5 minutes | Basic facts, key points |
-| **Standard** | Regular videos | 10-15 minutes | Comprehensive research, multiple angles |
-| **Deep** | Flagship/evergreen content | 30-60 minutes | Expert-level depth, original insights |
-| **Investigative** | Series/documentary-style | 2-4 hours | Primary sources, interview synthesis |
+| Level | Use Case | Max Tokens | CLI Flag |
+|-------|----------|------------|----------|
+| **Quick** | Trending topics, time-sensitive | 1,500 | `-d quick` |
+| **Standard** | Regular videos (default) | 4,000 | `-d standard` |
+| **Deep** | Flagship/evergreen content | 6,000 | `-d deep` |
+| **Investigative** | Series/documentary-style | 8,000 | `-d investigative` |
+
+#### Implemented Features
+
+1. **`research_topic()`** - Main research method with configurable depth
+2. **`expand_topic_questions()`** - Generates 20+ research questions for comprehensive coverage
+3. **`verify_facts()`** - Fact-checks claims with confidence scores (0.0-1.0)
+4. **`generate_content_structure()`** - Creates optimal video structure from research
 
 #### Research Output Structure
 
@@ -193,32 +195,70 @@ Auto-generate playlist structures:
 
 ## 🎯 CONTENT QUALITY ENHANCEMENTS
 
+### ✅ QualityService (Implemented)
+
+The `QualityService` provides automated quality checks before production.
+
+#### Quick Start
+
+```bash
+# Basic quality evaluation
+faceless quality output/scary-stories/script.json
+
+# Strict mode - all gates must pass
+faceless quality output/finance/script.json --strict
+
+# Generate improved hook alternatives
+faceless quality output/luxury/script.json --improve-hooks -i
+
+# Save quality report to file
+faceless quality output/script.json --output quality_report.json
+```
+
 ### 1. Script Quality Scoring
 
-Implement automated quality checks before production:
+#### Quality Gates (5 Implemented)
 
-#### Quality Metrics
+| Gate | Metric | Minimum Score | What It Measures |
+|------|--------|---------------|------------------|
+| **HOOK_QUALITY** | Hook effectiveness | 7.0/10 | First 30 seconds impact |
+| **NARRATIVE_FLOW** | Story structure | 6.0/10 | Transitions, pacing, arc |
+| **INFORMATION_DENSITY** | Facts per minute | 5.0/10 | Value delivery rate |
+| **ENGAGEMENT_POTENTIAL** | Viewer interaction | 5.0/10 | Comments, shares potential |
+| **FACTUAL_FOUNDATION** | Source quality | 6.0/10 | Claims with citations |
 
-| Metric | Target | How Measured |
-|--------|--------|--------------|
-| **Hook Strength** | 8+/10 | AI evaluation of first 30 seconds |
-| **Information Density** | Optimal | Facts per minute (target: 3-5 for educational) |
-| **Narrative Flow** | Smooth | Transition quality scoring |
-| **Emotional Beats** | Present | Humor, surprise, awe moments identified |
-| **Retention Prediction** | 50%+ | ML model based on similar videos |
-| **Source Quality** | High | % of claims with citations |
-| **Originality Score** | 70%+ | Unique insights vs. rehashed content |
+#### Quality Thresholds
 
-#### Quality Gates
-
-Scripts must pass quality gates before production:
-
+```python
+# Default configuration
+min_hook_score = 7.0
+min_overall_score = 6.5
+max_critical_issues = 0
 ```
-Gate 1: Research Completeness (sources verified)
-Gate 2: Hook Quality (AI scoring 8+)
-Gate 3: Structure Quality (proper arc, pacing)
-Gate 4: Factual Accuracy (cross-referenced claims)
-Gate 5: Entertainment Value (engagement prediction)
+
+#### Hook Analysis Output
+
+The quality service provides detailed hook analysis:
+
+```json
+{
+  "score": 8.5,
+  "type": "shocking",  // question, statistic, story, shocking, mystery
+  "attention_grab": 0.85,
+  "curiosity_gap": 0.9,
+  "improvements": ["Consider adding a specific number", "End with a question"]
+}
+```
+
+#### Retention Predictions
+
+```json
+{
+  "retention_30s": 0.75,
+  "retention_50_percent": 0.55,
+  "completion_rate": 0.35,
+  "loop_potential": 0.2
+}
 ```
 
 ---
@@ -294,32 +334,42 @@ For each script section, generate:
 
 ## 🤖 ADVANCED AI INTEGRATION
 
-### 1. Multi-Model Research Architecture
+### 1. Current AI Architecture
 
-#### Model Specialization
+The pipeline uses Azure OpenAI for all AI operations:
+
+| Deployment | Purpose | Model |
+|------------|---------|-------|
+| Chat | Research, scripting, analysis | GPT-4o |
+| Image | Scene generation | gpt-image-1 |
+| TTS | Voice narration | gpt-4o-mini-tts |
+
+### 2. Multi-Model Research (Planned)
+
+#### Model Specialization (Future)
 
 | Model | Best Used For | Strengths |
 |-------|---------------|-----------|
-| **GPT-5.0** | Creative writing, narrative flow | Natural language, storytelling |
-| **Gemini 2.0** | Factual research, analysis | Multi-modal, recent knowledge |
+| **GPT-4o** | Creative writing, narrative flow | Natural language, storytelling |
+| **Gemini** | Factual research, analysis | Multi-modal, recent knowledge |
 | **Claude** | Nuanced analysis, counterarguments | Balanced perspectives, reasoning |
 | **Perplexity** | Current events, sourced facts | Real-time web access, citations |
 
-#### Ensemble Research Pattern
+#### Ensemble Research Pattern (Planned)
 
 ```python
-# Pseudo-code for multi-model research
+# Future multi-model research
 async def deep_research(topic: str) -> ResearchOutput:
     # Parallel research across models
     results = await gather(
         gemini.research(topic, focus="facts_and_data"),
-        gpt5.research(topic, focus="narrative_angles"),
+        gpt4o.research(topic, focus="narrative_angles"),
         claude.research(topic, focus="counterarguments_and_nuance"),
         perplexity.research(topic, focus="recent_developments")
     )
     
     # Synthesize and cross-reference
-    synthesis = await gpt5.synthesize(results)
+    synthesis = await gpt4o.synthesize(results)
     
     # Fact-check synthesis
     verified = await fact_check_service.verify(synthesis)
@@ -329,7 +379,7 @@ async def deep_research(topic: str) -> ResearchOutput:
 
 ---
 
-### 2. Expert Persona System
+### 2. Expert Persona System (Planned)
 
 #### Simulated Expert Review
 
@@ -365,58 +415,102 @@ Production-Ready Script
 
 ### 3. Trend Intelligence System
 
-#### Automated Topic Discovery
+#### ✅ TrendingService (Implemented)
 
-Monitor and analyze:
+Monitor and discover trending topics for each niche.
 
-1. **Search Trends**: Google Trends, YouTube trending
-2. **Social Signals**: Reddit hot topics, Twitter/X trending
-3. **Competitor Analysis**: What similar channels are covering
-4. **Seasonal Patterns**: Historical performance by date
-5. **News Cycle**: Current events relevant to niches
+#### Quick Start
 
-#### Topic Scoring Algorithm
+```bash
+# Get trending topics for a niche
+faceless trending scary-stories --count 10
+
+# Analyze a specific topic's potential
+faceless trending finance --analyze "credit card debt payoff strategies"
+
+# Save trending report to file
+faceless trending luxury --count 15 --output trending_report.json
+```
+
+#### Trend Categories
+
+The service categorizes topics into:
+
+| Category | Criteria | Best For |
+|----------|----------|----------|
+| **Hot** | Score ≥75, lifecycle RISING/PEAK | Immediate content |
+| **Rising** | Emerging with growth >10% | Early mover advantage |
+| **Evergreen** | Potential ≥0.7 | Long-term library |
+| **Viral Potential** | Video potential ≥0.8, low competition | High-risk/high-reward |
+
+#### Lifecycle Stages
 
 ```
-Topic Score = (Search Volume × 0.3) + 
-              (Trend Direction × 0.2) + 
-              (Competition Gap × 0.2) + 
-              (Channel Fit × 0.2) + 
-              (Evergreen Potential × 0.1)
+EMERGING → RISING → PEAK → DECLINING → EVERGREEN
+```
+
+The service suggests optimal content timing based on where a topic sits in its lifecycle.
+
+#### Data Sources
+
+- **Reddit**: 23 subreddit configurations by niche
+- **AI Suggestions**: GPT-powered trend prediction
+- **Google Trends**: Search volume data
+- **News**: Current events integration
+
+#### Topic Analysis Output
+
+```json
+{
+  "topic": "What's inside a billionaire's bunker",
+  "score": 82,
+  "search_volume": "high",
+  "growth_rate": 15.5,
+  "competition": "low",
+  "lifecycle": "RISING",
+  "video_potential": 0.85,
+  "suggested_timing": "Create content within 7 days"
+}
 ```
 
 ---
 
 ## 📊 QUALITY ASSURANCE SYSTEM
 
-### 1. Pre-Production Checklist
+### 1. Pre-Production Workflow
+
+```bash
+# Complete pre-production quality workflow
+faceless trending finance --count 5                    # Find topics
+faceless research "Selected topic" -n finance -d deep  # Deep research
+faceless generate finance -c 1 -p youtube              # Generate content
+faceless quality output/finance/script.json --strict   # Quality gate
+```
+
+### 2. Quality Checklist
 
 ```markdown
 ## Research Phase
 - [ ] Topic researched with appropriate depth level
-- [ ] 3+ primary sources verified
+- [ ] Research output reviewed (`faceless research ... -o research.json`)
 - [ ] Counterarguments identified and addressed
 - [ ] Recent developments checked (last 30 days)
-- [ ] Expert perspectives included
 
 ## Script Phase
-- [ ] Hook achieves 8+/10 quality score
+- [ ] Quality check passed (`faceless quality script.json`)
+- [ ] Hook achieves 7+/10 quality score
 - [ ] All claims have citations
 - [ ] Narrative arc is complete
-- [ ] Pacing is optimized for retention
-- [ ] CTA and next video tease included
 
 ## Visual Phase
 - [ ] Image prompts match narrative tone
 - [ ] Key moments have strong visual representation
-- [ ] Text overlays enhance (not distract)
 - [ ] Thumbnail concept defined
 
 ## Metadata Phase
 - [ ] Title optimized (searchable + clickable)
 - [ ] Description includes sources and timestamps
 - [ ] Tags researched and applied
-- [ ] Cards and end screens planned
 ```
 
 ---
@@ -440,23 +534,34 @@ After video production, verify:
 
 ## 🚀 IMPLEMENTATION ROADMAP
 
-### Phase 1: Research Foundation (Priority: High)
+### ✅ Phase 1: Research Foundation (COMPLETE)
 
-- [ ] Implement `DeepResearchService` with multi-model support
-- [ ] Create research depth configuration system
-- [ ] Build source verification pipeline
-- [ ] Integrate web search APIs (Bing/Google)
-- [ ] Create research output schema
+- [x] Implement `DeepResearchService` with depth levels
+- [x] Create research depth configuration system
+- [x] Build topic expansion (`expand_topic_questions`)
+- [x] Add fact verification (`verify_facts`)
+- [x] Create content structure generation
+- [x] CLI command: `faceless research`
 
-### Phase 2: Script Enhancement (Priority: High)
+### ✅ Phase 2: Script Quality (COMPLETE)
 
-- [ ] Build script quality scoring system
-- [ ] Implement multi-pass enhancement pipeline
-- [ ] Create expert persona review system
-- [ ] Develop voice/tone consistency checker
-- [ ] Add quality gates to production pipeline
+- [x] Build script quality scoring system (5 gates)
+- [x] Implement hook quality evaluation
+- [x] Create hook improvement generator
+- [x] Add retention prediction metrics
+- [x] Quality gates integration
+- [x] CLI command: `faceless quality`
 
-### Phase 3: Multi-Video Planning (Priority: Medium)
+### ✅ Phase 3: Trend Intelligence (COMPLETE)
+
+- [x] Build trending topic discovery
+- [x] Implement topic scoring (0-100)
+- [x] Create lifecycle stage detection
+- [x] Add Reddit integration (23 subreddits)
+- [x] Topic analysis for potential
+- [x] CLI command: `faceless trending`
+
+### 🔲 Phase 4: Multi-Video Planning (Planned)
 
 - [ ] Implement series detection algorithm
 - [ ] Build content interconnection graph
@@ -464,19 +569,11 @@ After video production, verify:
 - [ ] Develop cross-video linking system
 - [ ] Add series metadata to script format
 
-### Phase 4: Intelligence Systems (Priority: Medium)
+### 🔲 Phase 5: Expert Review System (Planned)
 
-- [ ] Build trend monitoring service
-- [ ] Implement topic scoring algorithm
-- [ ] Create competitor analysis tools
-- [ ] Develop seasonal content planner
-- [ ] Add news integration for timely content
-
-### Phase 5: Quality Automation (Priority: Low)
-
+- [ ] Multi-persona script review (Academic, Producer, Viewer, Critic, SEO)
 - [ ] Automated pre-production checklists
 - [ ] Post-production quality audits
-- [ ] Retention prediction modeling
 - [ ] A/B testing infrastructure for scripts
 - [ ] Continuous learning from performance data
 
@@ -509,39 +606,53 @@ After video production, verify:
 
 ---
 
-## 📝 TECHNICAL REQUIREMENTS
+## 📝 TECHNICAL REFERENCE
 
-### New Services Required
+### Implemented Services
 
-1. **DeepResearchService**: Multi-model research orchestration
-2. **ScriptQualityService**: Automated quality scoring
-3. **ContentGraphService**: Video interconnection management
-4. **TrendIntelligenceService**: Topic discovery and scoring
-5. **ExpertReviewService**: Multi-persona script review
+| Service | Location | CLI |
+|---------|----------|-----|
+| `DeepResearchService` | `src/faceless/services/research_service.py` | `faceless research` |
+| `QualityService` | `src/faceless/services/quality_service.py` | `faceless quality` |
+| `TrendingService` | `src/faceless/services/trending_service.py` | `faceless trending` |
 
-### API Integrations
+### Planned Services
 
-- Gemini 2.0 API (research)
-- GPT-5.0 API (creative, synthesis)
-- Perplexity API (real-time web research)
-- Google Trends API (trend analysis)
-- YouTube Data API (competitor analysis)
+1. **ContentGraphService**: Video interconnection management
+2. **ExpertReviewService**: Multi-persona script review
 
-### Configuration Additions
+### Configuration
 
 ```env
-# Deep Research
-GEMINI_API_KEY=...
-PERPLEXITY_API_KEY=...
-RESEARCH_DEPTH_DEFAULT=standard
+# Azure OpenAI (Required)
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_API_KEY=your-api-key
+AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-4o
+AZURE_OPENAI_IMAGE_DEPLOYMENT=gpt-image-1
+AZURE_OPENAI_TTS_DEPLOYMENT=gpt-4o-mini-tts
 
-# Quality Thresholds
-MIN_HOOK_SCORE=8
-MIN_SOURCE_COUNT=3
-MAX_UNVERIFIED_CLAIMS=0
+# Quality Thresholds (Optional - defaults shown)
+# MIN_HOOK_SCORE=7.0
+# MIN_OVERALL_SCORE=6.5
+# MAX_CRITICAL_ISSUES=0
+```
+
+### CLI Reference
+
+```bash
+# Deep Research
+faceless research <topic> -n <niche> -d <depth> -o <output.json>
+  # depth: quick | standard | deep | investigative
+
+# Quality Evaluation
+faceless quality <script.json> [--strict] [--improve-hooks] [-o <report.json>]
+
+# Trending Topics
+faceless trending <niche> [-c <count>] [--analyze <topic>] [-o <report.json>]
 ```
 
 ---
 
-*Last Updated: January 2026*
-*Review Schedule: Quarterly*
+*Last Updated: February 2026*  
+*Review Schedule: Quarterly*  
+*See also: [BUSINESS_PLANS.md](BUSINESS_PLANS.md) | [SETUP.md](SETUP.md) | [ARCHITECTURE.md](ARCHITECTURE.md)*

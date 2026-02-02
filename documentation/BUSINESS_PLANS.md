@@ -1,13 +1,29 @@
 # Faceless Content Empire - Business Plans
 
+> **Last Updated:** February 2026  
+> **Pipeline Version:** See `faceless --version`
+
 ## Overview
 
 Three parallel channels, each targeting different audiences and monetization strategies.
 All use the same production pipeline with niche-specific customizations.
 
+### Quick Start
+
+```bash
+# Generate content for any niche
+faceless generate scary-stories -c 1 -p youtube
+
+# Research trending topics before creating content
+faceless trending scary-stories --count 10
+
+# Validate content quality before production
+faceless quality output/scary-stories/script.json --strict
+```
+
 ---
 
-# 🎯 STRATEGIC PRIORITIES (Updated January 2026)
+# 🎯 STRATEGIC PRIORITIES
 
 ## Multi-Platform Syndication Strategy
 Don't limit yourself to YouTube + TikTok. The same content can reach 5x more viewers:
@@ -52,6 +68,17 @@ Build audience loyalty with predictable content:
 | Finance | "Wealth Wednesday" | Weekly | Success stories |
 | Luxury | "Price of Perfection" | Weekly | Brand breakdown |
 | Luxury | "Billionaire Breakdown" | Weekly | Person profile |
+
+### Pipeline Integration
+
+Each channel strategy below integrates with the automated pipeline:
+
+| Strategy | CLI Command |
+|----------|-------------|
+| Find trending topics | `faceless trending <niche> --count 10` |
+| Deep research on topic | `faceless research "topic" -n <niche> -d deep` |
+| Generate content | `faceless generate <niche> -c 1 -p youtube` |
+| Quality check | `faceless quality <script.json> --strict` |
 
 ---
 
@@ -117,6 +144,20 @@ Build audience loyalty with predictable content:
 | Wed | "The Deep Web Iceberg Explained" | Iceberg clips |
 | Thu | - | Story parts |
 | Fri | Compilation: "Scary Stories to Fall Asleep To" | Best clips |
+
+## Pipeline Commands
+
+```bash
+# Find what's trending in horror right now
+faceless trending scary-stories --count 10
+
+# Deep research on a specific topic
+faceless research "Search and rescue disappearances" -n scary-stories -d deep
+
+# Generate a video with quality checks
+faceless generate scary-stories -c 1 -p youtube
+faceless quality output/scary-stories/latest_script.json --improve-hooks
+```
 
 ## Growth Strategy
 1. **SEO:** Target "scary stories to fall asleep to", "true scary stories", "reddit horror"
@@ -195,6 +236,20 @@ Build audience loyalty with predictable content:
 | Wed | "5 Side Hustles That Actually Work in 2025" | Individual hustle clips |
 | Thu | - | Responding to comments |
 | Fri | "The Index Fund Strategy Explained" | Simple explainer clips |
+
+## Pipeline Commands
+
+```bash
+# Find trending finance topics
+faceless trending finance --count 10
+
+# Analyze a specific topic's potential
+faceless trending finance --analyze "credit card debt strategies"
+
+# Generate with investigative research depth
+faceless research "Index fund vs ETF comparison" -n finance -d investigative
+faceless generate finance -c 1 -p youtube
+```
 
 ## Growth Strategy
 1. **SEO:** Target "how to invest", "money mistakes", "passive income"
@@ -279,6 +334,20 @@ Build audience loyalty with predictable content:
 | Thu | - | Success mindset tips |
 | Fri | "The World's Most Exclusive Credit Cards" | Card reveals |
 
+## Pipeline Commands
+
+```bash
+# Find trending luxury topics
+faceless trending luxury --count 10
+
+# Research luxury brand history in depth
+faceless research "Why Patek Philippe watches cost so much" -n luxury -d deep
+
+# Generate with quality gate enforcement
+faceless generate luxury -c 1 -p youtube
+faceless quality output/luxury/latest_script.json --strict
+```
+
 ## Growth Strategy
 1. **SEO:** Target "most expensive", "billionaire lifestyle", "luxury explained"
 2. **Thumbnails:** Gold elements, price tags, luxury items, "REVEALED"
@@ -338,17 +407,28 @@ With automation pipeline:
 # 💰 $0 Budget Tool Stack
 
 ## Required (All Free)
+
 | Tool | Purpose | Cost |
 |------|---------|------|
-| DaVinci Resolve | Video editing | Free |
-| Audacity | Audio editing | Free |
-| GIMP or Photopea | Thumbnail creation | Free |
-| CapCut | TikTok editing | Free |
-| FFmpeg | Video processing/automation | Free |
-| Python | Automation scripts | Free |
-| Pexels/Pixabay | Stock footage | Free |
-| Pixabay Audio | Royalty-free music | Free |
-| Azure OpenAI (your sub) | AI images + TTS | Your existing sub |
+| **DaVinci Resolve** | Video editing | Free |
+| **Audacity** | Audio editing | Free |
+| **GIMP or Photopea** | Thumbnail creation | Free |
+| **CapCut** | TikTok editing | Free |
+| **FFmpeg** | Video processing/automation | Free |
+| **Python 3.11+** | Pipeline execution | Free |
+| **Pexels/Pixabay** | Stock footage | Free |
+| **Pixabay Audio** | Royalty-free music | Free |
+| **Azure OpenAI** | AI images + TTS | Your subscription |
+
+## Faceless Pipeline (This Repository)
+
+| CLI Command | Purpose |
+|-------------|---------|
+| `faceless generate` | Generate complete video content |
+| `faceless research` | Deep research on topics |
+| `faceless trending` | Find trending topics by niche |
+| `faceless quality` | Evaluate and improve scripts |
+| `faceless validate` | Test API connections |
 
 ## Free Music Sources
 - YouTube Audio Library
@@ -365,10 +445,43 @@ With automation pipeline:
 
 # Next Steps
 
-1. **Choose channel names** for each niche
-2. **Provide Azure API credentials** (I'll update the pipeline)
-3. **Install required software** (DaVinci Resolve, Python, FFmpeg)
-4. **Run the pipeline** to generate your first batch of content
-5. **Create YouTube/TikTok accounts** with consistent branding
+## 1. Setup Environment
 
-See `PIPELINE_README.md` for how to run the automation.
+```bash
+# Install the pipeline
+pip install -e ".[dev]"
+
+# Configure Azure OpenAI credentials in .env
+cp .env.example .env
+# Edit .env with your Azure OpenAI keys
+
+# Validate connections
+faceless validate --test-connections
+```
+
+## 2. Generate Your First Content
+
+```bash
+# Find a trending topic
+faceless trending scary-stories --count 5
+
+# Research it deeply
+faceless research "Topic from above" -n scary-stories -d deep -o research.json
+
+# Generate the video content
+faceless generate scary-stories -c 1 -p youtube
+
+# Quality check before publishing
+faceless quality output/scary-stories/latest_script.json --strict
+```
+
+## 3. Create Channel Accounts
+
+1. **Choose channel names** for each niche
+2. **Create YouTube/TikTok accounts** with consistent branding
+3. **Install DaVinci Resolve** for final video polish
+4. **Upload** and monitor analytics
+
+---
+
+*See [SETUP.md](SETUP.md) for detailed installation and [YOUTUBE_IMPROVEMENTS.md](YOUTUBE_IMPROVEMENTS.md) for quality enhancement strategies.*

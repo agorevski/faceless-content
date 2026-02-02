@@ -5,64 +5,64 @@ This document describes the system architecture, data flow, and component intera
 ## System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         FACELESS CONTENT PIPELINE                           │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
+┌────────────────────────────────────────────────────────────────────────────┐
+│                         FACELESS CONTENT PIPELINE                          │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
 │  ┌───────────────────────────────────────────────────────────────────────┐ │
 │  │                           CLI LAYER                                   │ │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │ │
-│  │  │  generate   │  │  validate   │  │    init     │  │    info     │  │ │
-│  │  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘  │ │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐   │ │
+│  │  │  generate   │  │  validate   │  │    init     │  │    info     │   │ │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘   │ │
 │  └───────────────────────────────────────────────────────────────────────┘ │
-│                                    │                                        │
-│                                    ▼                                        │
+│                                    │                                       │
+│                                    ▼                                       │
 │  ┌───────────────────────────────────────────────────────────────────────┐ │
 │  │                      PIPELINE ORCHESTRATOR                            │ │
 │  │                                                                       │ │
-│  │   Load Scripts → Enhance → Images → Audio → Video → Post-process     │ │
+│  │   Load Scripts → Enhance → Images → Audio → Video → Post-process      │ │
 │  │                                                                       │ │
 │  │   Features: Checkpointing, Resume, Progress Tracking                  │ │
 │  └───────────────────────────────────────────────────────────────────────┘ │
-│                                    │                                        │
+│                                    │                                       │
 │           ┌────────────────────────┼────────────────────────┐              │
 │           ▼                        ▼                        ▼              │
-│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐        │
-│  │ EnhancerService │    │  ImageService   │    │   TTSService    │        │
-│  │                 │    │                 │    │                 │        │
-│  │  Script GPT     │    │  Scene Images   │    │  Voice Audio    │        │
-│  │  Enhancement    │    │  Per Platform   │    │  Per Scene      │        │
-│  └─────────────────┘    └─────────────────┘    └─────────────────┘        │
+│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐         │
+│  │ EnhancerService │    │  ImageService   │    │   TTSService    │         │
+│  │                 │    │                 │    │                 │         │
+│  │  Script GPT     │    │  Scene Images   │    │  Voice Audio    │         │
+│  │  Enhancement    │    │  Per Platform   │    │  Per Scene      │         │
+│  └─────────────────┘    └─────────────────┘    └─────────────────┘         │
 │           │                        │                        │              │
 │           └────────────────────────┼────────────────────────┘              │
-│                                    ▼                                        │
+│                                    ▼                                       │
 │                        ┌─────────────────┐                                 │
 │                        │  VideoService   │                                 │
 │                        │                 │                                 │
 │                        │  FFmpeg-based   │                                 │
 │                        │  Video Assembly │                                 │
 │                        └─────────────────┘                                 │
-│                                    │                                        │
+│                                    │                                       │
 │                     ┌──────────────┴──────────────┐                        │
 │                     ▼                             ▼                        │
 │            ┌──────────────┐              ┌──────────────┐                  │
 │            │   YouTube    │              │   TikTok     │                  │
 │            │  1920x1080   │              │  1080x1920   │                  │
 │            └──────────────┘              └──────────────┘                  │
-│                                                                             │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                           INFRASTRUCTURE                                    │
-│                                                                             │
-│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐        │
-│  │ AzureOpenAI     │    │    Settings     │    │    Logging      │        │
-│  │    Client       │    │ (pydantic-      │    │  (structlog)    │        │
-│  │                 │    │  settings)      │    │                 │        │
-│  │  - Images       │    │                 │    │  - JSON output  │        │
-│  │  - Chat/GPT     │    │  - .env config  │    │  - Context      │        │
-│  │  - TTS          │    │  - Validation   │    │  - Rich console │        │
-│  └─────────────────┘    └─────────────────┘    └─────────────────┘        │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
+│                                                                            │
+├────────────────────────────────────────────────────────────────────────────┤
+│                           INFRASTRUCTURE                                   │
+│                                                                            │
+│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐         │
+│  │ AzureOpenAI     │    │    Settings     │    │    Logging      │         │
+│  │    Client       │    │ (pydantic-      │    │  (structlog)    │         │
+│  │                 │    │  settings)      │    │                 │         │
+│  │  - Images       │    │                 │    │  - JSON output  │         │
+│  │  - Chat/GPT     │    │  - .env config  │    │  - Context      │         │
+│  │  - TTS          │    │  - Validation   │    │  - Rich console │         │
+│  └─────────────────┘    └─────────────────┘    └─────────────────┘         │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Package Structure
@@ -155,7 +155,7 @@ faceless-content/
 Provides the command-line interface using [Typer](https://typer.tiangolo.com/).
 
 | Command | Description |
-|---------|-------------|
+| ------- | ----------- |
 | `faceless generate <niche>` | Run full pipeline for a niche |
 | `faceless validate` | Check configuration and API connections |
 | `faceless init <niche>` | Initialize output directories |
@@ -165,6 +165,7 @@ Provides the command-line interface using [Typer](https://typer.tiangolo.com/).
 | `faceless trending <niche>` | Discover trending topics |
 
 **Options for `generate`:**
+
 - `-c, --count` - Number of videos (1-10)
 - `-p, --platform` - Target platform(s)
 - `-s, --script` - Path to existing script
@@ -188,6 +189,7 @@ results = orchestrator.run(
 ```
 
 **Responsibilities:**
+
 - Load/create scripts
 - Coordinate service calls
 - Manage checkpoints for resume
@@ -199,32 +201,42 @@ results = orchestrator.run(
 Business logic services that implement specific pipeline stages.
 
 #### EnhancerService
+
 Uses GPT to improve scripts for engagement:
+
 - Improves narration flow
 - Enhances image prompts
 - Adds visual style consistency
 
 #### ImageService
+
 Generates images for each scene:
+
 - Platform-specific sizing (YouTube vs TikTok)
 - Visual style suffix application
 - Checkpoint support for resume
 
 #### TTSService
+
 Generates audio narration:
+
 - Niche-specific voice settings
 - Speed adjustment
 - Duration calculation with ffprobe
 
 #### VideoService
+
 Assembles final videos:
+
 - Ken Burns effect (zoom/pan)
 - Scene concatenation
 - Background music mixing
 - Platform-specific encoding
 
 #### DeepResearchService
+
 Conducts AI-powered topic research:
+
 - Four depth levels: quick, standard, deep, investigative
 - Generates key findings, statistics, expert quotes
 - Identifies counterarguments and recent developments
@@ -232,7 +244,9 @@ Conducts AI-powered topic research:
 - CLI: `faceless research "topic" -n niche -d depth`
 
 #### QualityService
+
 Evaluates script quality before production:
+
 - Hook quality scoring (0-10 scale)
 - Retention curve prediction
 - Engagement potential analysis
@@ -241,7 +255,9 @@ Evaluates script quality before production:
 - CLI: `faceless quality script.json`
 
 #### TrendingService
+
 Discovers trending topics for content:
+
 - Reddit hot topic analysis
 - AI-suggested trending topics
 - Topic lifecycle tracking (emerging, rising, peak, declining, evergreen)
@@ -250,7 +266,9 @@ Discovers trending topics for content:
 - CLI: `faceless trending niche`
 
 #### SubtitleService
+
 Generates subtitles for videos:
+
 - SRT and VTT format output
 - Audio-based timing extraction
 - Script-based subtitle generation
@@ -258,14 +276,18 @@ Generates subtitles for videos:
 - Subtitle burn-in to video with FFmpeg
 
 #### ThumbnailService
+
 Generates thumbnail variants:
+
 - Multiple concept templates (reaction, reveal, mystery, etc.)
 - A/B testing variants generation
 - Text overlay instructions
 - Platform-optimized sizing
 
 #### ScraperService
+
 Fetches content from external sources:
+
 - Reddit story scraping
 - Creepypasta content fetching
 - Text cleaning and processing
@@ -273,14 +295,18 @@ Fetches content from external sources:
 - Image prompt generation
 
 #### MetadataService
+
 Generates posting metadata:
+
 - Title and description optimization
 - Hashtag generation
 - Posting schedule recommendations
 - Series metadata management
 
 #### ContentSourceService
+
 Orchestrates multi-source content fetching:
+
 - Fetches content from multiple sources (Reddit, Wikipedia, YouTube, News, HackerNews, OpenLibrary)
 - Intelligent source selection based on niche
 - Content deduplication and ranking
@@ -291,12 +317,14 @@ Orchestrates multi-source content fetching:
 Handles external API communication with retry logic.
 
 #### BaseHTTPClient
+
 - HTTPX-based async-capable client
 - Tenacity retry with exponential backoff
 - Configurable timeouts
 - Request/response logging
 
 #### AzureOpenAIClient
+
 - Image generation (DALL-E / GPT-Image-1)
 - Chat completions (GPT-4o)
 - Text-to-speech (gpt-4o-mini-tts)
@@ -307,6 +335,7 @@ Handles external API communication with retry logic.
 Domain models and shared types.
 
 #### Enums
+
 ```python
 class Niche(str, Enum):
     SCARY_STORIES = "scary-stories"
@@ -327,6 +356,7 @@ class Voice(str, Enum):
 ```
 
 #### Models
+
 ```python
 class Scene(BaseModel):
     scene_number: int
@@ -353,6 +383,7 @@ class Checkpoint(BaseModel):
 ```
 
 #### Exceptions
+
 Structured exception hierarchy with 30+ specific types:
 
 ```
@@ -403,6 +434,7 @@ class Settings(BaseSettings):
 ```
 
 **Environment Variables:**
+
 ```bash
 # Azure OpenAI (required)
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
@@ -417,6 +449,7 @@ DEBUG=false
 ### 7. Utils Layer (`utils/`)
 
 #### Logging
+
 Uses [structlog](https://www.structlog.org/) for structured logging:
 
 ```python
@@ -433,6 +466,7 @@ class MyService(LoggerMixin):
 ```
 
 **Features:**
+
 - JSON output for production
 - Rich console output for development
 - Context binding (request ID, script title)
@@ -473,7 +507,7 @@ class MyService(LoggerMixin):
 ### File Naming Conventions
 
 | Asset Type | Pattern | Example |
-|------------|---------|---------|
+| ---------- | ------- | ------- |
 | Script | `{safe_title}_script.json` | `the-house-at-the-end_script.json` |
 | Image | `scene_{NN}_{platform}.png` | `scene_01_youtube.png` |
 | Audio | `scene_{NN}.mp3` | `scene_01.mp3` |
@@ -502,7 +536,7 @@ Enables resuming failed runs:
 ## API Dependencies
 
 | Service | Purpose | Client |
-|---------|---------|--------|
+| ------- | ------- | ------ |
 | Azure OpenAI (GPT-Image-1/DALL-E) | Image generation | `AzureOpenAIClient.generate_image()` |
 | Azure OpenAI (GPT-4o) | Script enhancement | `AzureOpenAIClient.chat_json()` |
 | Azure OpenAI (TTS) | Voice synthesis | `AzureOpenAIClient.generate_audio()` |
@@ -511,7 +545,7 @@ Enables resuming failed runs:
 ## Platform-Specific Settings
 
 | Setting | YouTube | TikTok |
-|---------|---------|--------|
+| ------- | ------- | ------ |
 | Resolution | 1920×1080 | 1080×1920 |
 | Aspect Ratio | 16:9 | 9:16 |
 | Image Size | 1536×1024 | 1024×1536 |
@@ -522,7 +556,7 @@ Enables resuming failed runs:
 ## Voice Settings by Niche
 
 | Niche | Voice | Speed |
-|-------|-------|-------|
+| ----- | ----- | ----- |
 | Scary Stories | onyx | 0.9 |
 | Finance | onyx | 1.0 |
 | Luxury | nova | 0.95 |
@@ -530,6 +564,7 @@ Enables resuming failed runs:
 ## Testing
 
 ### Test Structure
+
 ```
 tests/
 ├── conftest.py          # Shared fixtures
@@ -539,6 +574,7 @@ tests/
 ```
 
 ### Running Tests
+
 ```bash
 # All tests
 pytest
