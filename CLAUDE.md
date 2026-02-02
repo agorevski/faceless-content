@@ -33,7 +33,7 @@ src/faceless/
 ├── clients/    # External API clients (Azure OpenAI)
 ├── config/     # Pydantic Settings configuration
 ├── core/       # Domain models, enums, exceptions
-├── services/   # Business logic (enhancer, image, tts, video, etc.)
+├── services/   # Business logic (enhancer, image, tts, video, content_source, etc.)
 ├── pipeline/   # Orchestrator coordinating services
 └── utils/      # Logging utilities
 ```
@@ -89,7 +89,7 @@ class MyService:
 ## Key Enums
 
 ```python
-from faceless.core.enums import Niche, Platform, Voice, JobStatus
+from faceless.core.enums import Niche, Platform, Voice, JobStatus, ContentSourceType
 
 # 25 niches available
 Niche.SCARY_STORIES, Niche.FINANCE, Niche.LUXURY, Niche.TRUE_CRIME, ...
@@ -97,11 +97,13 @@ Niche.SCARY_STORIES, Niche.FINANCE, Niche.LUXURY, Niche.TRUE_CRIME, ...
 # Platforms
 Platform.YOUTUBE  # 1920x1080, 16:9
 Platform.TIKTOK   # 1080x1920, 9:16
+
+# Content sources (for multi-source fetching)
+ContentSourceType.REDDIT, ContentSourceType.WIKIPEDIA, ContentSourceType.YOUTUBE, ...
 ```
 
 ## Don'ts
 
-- **Don't modify `pipeline/` directory** - legacy code, excluded from linting
 - **Don't commit `.env` files** - use `.env.example` as template
 - **Don't use relative imports** - always absolute from `faceless`
 - **Don't skip type hints** - mypy strict mode enforced

@@ -441,9 +441,8 @@ pytest tests/unit/test_models.py::TestScene::test_create_valid_scene -v
 ## 📚 Next Steps
 
 1. Read the [Architecture Overview](ARCHITECTURE.md) to understand the system
-2. Check [Pipeline README](PIPELINE_README.md) for detailed pipeline documentation
-3. Review sample scripts in the `output/{niche}/scripts/` directories
-4. Create your first video: `faceless generate scary-stories`
+2. Review sample scripts in the `output/{niche}/scripts/` directories
+3. Create your first video: `faceless generate scary-stories`
 
 ---
 

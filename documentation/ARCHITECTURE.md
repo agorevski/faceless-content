@@ -108,7 +108,9 @@ faceless-content/
 │   │   ├── subtitle_service.py # Subtitle generation (SRT/VTT)
 │   │   ├── thumbnail_service.py# Thumbnail generation
 │   │   ├── scraper_service.py  # Content scraping from sources
-│   │   └── metadata_service.py # Posting metadata generation
+│   │   ├── metadata_service.py # Posting metadata generation
+│   │   ├── content_source_service.py  # Multi-source content orchestration
+│   │   └── sources/            # Source adapters (Reddit, Wikipedia, etc.)
 │   │
 │   └── utils/                  # Utilities
 │       ├── __init__.py
@@ -123,8 +125,8 @@ faceless-content/
 │
 ├── documentation/              # Project Documentation
 │   ├── ARCHITECTURE.md         # This file
-│   ├── SETUP_GUIDE.md
-│   └── PIPELINE_README.md
+│   ├── SETUP_GUIDE.md          # Setup instructions
+│   └── FUTURE_IMPROVEMENTS.md  # TikTok retention strategies
 │
 ├── output/                     # Generated Content (gitignored)
 │   └── {niche}/
@@ -139,11 +141,10 @@ faceless-content/
 │   ├── prompts/                # Prompt templates
 │   └── templates/              # Video templates
 │
-├── pipeline/                   # Legacy modules (deprecated)
-│
 ├── pyproject.toml              # Project configuration
 ├── .env.example                # Environment template
 ├── .pre-commit-config.yaml     # Pre-commit hooks
+├── CLAUDE.md                   # Claude/Copilot instructions
 └── .github/workflows/ci.yml    # CI/CD workflow
 ```
 
@@ -277,6 +278,13 @@ Generates posting metadata:
 - Hashtag generation
 - Posting schedule recommendations
 - Series metadata management
+
+#### ContentSourceService
+Orchestrates multi-source content fetching:
+- Fetches content from multiple sources (Reddit, Wikipedia, YouTube, News, HackerNews, OpenLibrary)
+- Intelligent source selection based on niche
+- Content deduplication and ranking
+- Manages source adapters with unified interface
 
 ### 4. Clients Layer (`clients/`)
 

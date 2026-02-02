@@ -31,17 +31,19 @@ faceless-content/
 │   │   ├── exceptions.py   # Custom exception classes
 │   │   └── models.py       # Pydantic data models
 │   ├── services/           # Business logic layer
-│   │   ├── enhancer_service.py  # Script enhancement with GPT
-│   │   ├── image_service.py     # AI image generation
-│   │   ├── tts_service.py       # Text-to-speech generation
-│   │   ├── video_service.py     # Video assembly
-│   │   ├── research_service.py  # Deep research on topics
-│   │   ├── quality_service.py   # Script quality evaluation
-│   │   ├── trending_service.py  # Trending topic discovery
-│   │   ├── subtitle_service.py  # Subtitle generation (SRT/VTT)
-│   │   ├── thumbnail_service.py # Thumbnail generation
-│   │   ├── scraper_service.py   # Content scraping from sources
-│   │   └── metadata_service.py  # Posting metadata generation
+│   │   ├── enhancer_service.py     # Script enhancement with GPT
+│   │   ├── image_service.py        # AI image generation
+│   │   ├── tts_service.py          # Text-to-speech generation
+│   │   ├── video_service.py        # Video assembly
+│   │   ├── research_service.py     # Deep research on topics
+│   │   ├── quality_service.py      # Script quality evaluation
+│   │   ├── trending_service.py     # Trending topic discovery
+│   │   ├── subtitle_service.py     # Subtitle generation (SRT/VTT)
+│   │   ├── thumbnail_service.py    # Thumbnail generation
+│   │   ├── scraper_service.py      # Content scraping from sources
+│   │   ├── metadata_service.py     # Posting metadata generation
+│   │   ├── content_source_service.py  # Multi-source content orchestration
+│   │   └── sources/                # Source adapters (Reddit, Wikipedia, etc.)
 │   ├── pipeline/           # Pipeline orchestration
 │   │   └── orchestrator.py # Main pipeline coordinator
 │   ├── utils/              # Utilities (logging, helpers)
@@ -51,19 +53,10 @@ faceless-content/
 │   ├── unit/               # Unit tests
 │   ├── conftest.py         # Pytest fixtures
 │   └── __init__.py
-├── pipeline/               # Legacy pipeline code (excluded from linting)
-│   ├── image_generator.py
-│   ├── script_enhancer.py
-│   ├── story_scraper.py
-│   ├── tts_generator.py
-│   ├── video_assembler.py
-│   └── ...                 # Other legacy modules
-├── documentation/          # Project documentation
 ├── shared/                 # Shared resources
-│   ├── templates/          # Video templates
-│   ├── prompts/            # Prompt templates (image_prompts.py)
-│   └── music/              # Background music
-├── {niche}/                # Niche-specific directories (23 total)
+│   └── prompts/            # Prompt templates (image_prompts.py)
+├── documentation/          # Project documentation
+├── {niche}/                # Niche-specific directories (25 total)
 │   └── scripts/            # Story/content scripts per niche
 ├── output/                 # Generated content (gitignored)
 ├── pyproject.toml          # Project configuration and dependencies
@@ -245,11 +238,10 @@ pre-commit install
 3. Image generation may be rejected by content filters - adjust prompts accordingly
 4. Checkpointing system allows resuming failed runs
 5. TikTok cuts are automatically generated from YouTube videos
-6. The `pipeline/` directory contains legacy code and is excluded from linting
-7. Each niche has its own directory with subreddit sources defined in `core/enums.py`
-8. Platform settings (resolution, aspect ratio, image sizes) are defined in `Platform` enum
-9. Voice settings per niche are configurable via settings
-10. Concurrent processing limits are configurable via environment variables
+6. Each niche has its own directory with subreddit sources defined in `core/enums.py`
+7. Platform settings (resolution, aspect ratio, image sizes) are defined in `Platform` enum
+8. Voice settings per niche are configurable via settings
+9. Concurrent processing limits are configurable via environment variables
 
 ## Testing
 - Tests are in `tests/` directory using pytest
@@ -281,3 +273,4 @@ Dev dependencies:
 - **Voice** (6 values): Azure TTS voices (alloy, echo, fable, onyx, nova, shimmer)
 - **ImageQuality** (3 values): standard, high, hd
 - **ThumbnailConcept** (8 values): A/B testing concepts (reaction, reveal, mystery, etc.)
+- **ContentSourceType** (7 values): Content source types (reddit, wikipedia, youtube, news, etc.)

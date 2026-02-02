@@ -55,10 +55,10 @@ When reviewing PRs, pay attention to:
 ## CI/CD
 
 GitHub Actions runs on every PR:
-1. Lint (ruff)
-2. Type check (mypy)
-3. Tests (pytest) on Python 3.11 & 3.12
-4. Security scan (bandit)
+1. Type check (mypy)
+2. Tests (pytest) on Python 3.11 & 3.12
+3. Security scan (bandit)
+4. Build package
 5. Coverage check (70% minimum)
 
 ## Labels

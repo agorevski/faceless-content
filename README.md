@@ -96,7 +96,9 @@ faceless-content/
 │   │   ├── subtitle_service.py  # Subtitle generation (SRT/VTT)
 │   │   ├── thumbnail_service.py # Thumbnail generation
 │   │   ├── scraper_service.py   # Content scraping from sources
-│   │   └── metadata_service.py  # Posting metadata generation
+│   │   ├── metadata_service.py  # Posting metadata generation
+│   │   ├── content_source_service.py  # Multi-source content orchestration
+│   │   └── sources/             # Source adapters (Reddit, Wikipedia, etc.)
 │   └── utils/              # Utilities (logging, helpers)
 ├── tests/                  # Test suite
 │   ├── unit/               # Unit tests
