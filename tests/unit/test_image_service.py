@@ -28,6 +28,7 @@ class TestImageService:
         with patch("faceless.services.image_service.get_settings") as mock:
             settings = MagicMock()
             settings.get_images_dir.return_value = Path("/tmp/images")
+            settings.max_concurrent_images = 5
             mock.return_value = settings
             yield settings
 

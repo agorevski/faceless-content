@@ -30,6 +30,7 @@ class TestTTSService:
             settings.get_voice_settings.return_value = (Voice.ONYX, 0.9)
             settings.get_audio_dir.return_value = Path("/tmp/audio")
             settings.ffprobe_path = "ffprobe"
+            settings.max_concurrent_tts = 5
             mock.return_value = settings
             yield settings
 

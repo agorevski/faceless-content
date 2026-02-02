@@ -31,6 +31,7 @@ class TestVideoService:
             settings.ffprobe_path = "ffprobe"
             settings.get_videos_dir.return_value = Path("/tmp/videos")
             settings.get_final_output_dir.return_value = Path("/tmp/final")
+            settings.max_concurrent_videos = 2
             mock.return_value = settings
             yield settings
 
@@ -64,9 +65,10 @@ class TestVideoService:
         """Test service initialization."""
         from faceless.services.video_service import VideoService
 
-        service = VideoService()
-        assert service._ffmpeg == "ffmpeg"
-        assert service._ffprobe == "ffprobe"
+        with patch("faceless.services.video_service.shutil.which", return_value=None):
+            service = VideoService()
+            assert service._ffmpeg == "ffmpeg"
+            assert service._ffprobe == "ffprobe"
 
     def test_run_ffmpeg_success(self, video_service, mock_settings) -> None:
         """Test successful FFmpeg execution."""
