@@ -3,15 +3,9 @@ Tests for the text_overlay module.
 Tests text overlay generation and FFmpeg filter creation.
 """
 
-import os
-import sys
-
 import pytest
 
-# Add pipeline directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "pipeline"))
-
-from text_overlay import (
+from faceless.core.text_overlay import (
     PRESET_STYLES,
     TextAnimation,
     TextOverlay,

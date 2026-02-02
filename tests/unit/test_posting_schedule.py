@@ -3,16 +3,11 @@ Tests for the posting_schedule module.
 Tests optimal posting time generation and schedule utilities.
 """
 
-import os
-import sys
 from datetime import datetime, time, timedelta
 
 import pytest
 
-# Add pipeline directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "pipeline"))
-
-from posting_schedule import (
+from faceless.core.posting_schedule import (
     DAY_PATTERNS,
     FREQUENCY_RECOMMENDATIONS,
     POSTING_WINDOWS,

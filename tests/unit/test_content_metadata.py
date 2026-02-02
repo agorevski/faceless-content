@@ -3,15 +3,11 @@ Tests for the content_metadata module.
 Tests metadata generation for TikTok posting.
 """
 
-import os
-import sys
+from pathlib import Path
 
 import pytest
 
-# Add pipeline directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "pipeline"))
-
-from content_metadata import (
+from faceless.services.metadata_service import (
     format_metadata_for_display,
     generate_content_metadata,
     generate_series_metadata,
@@ -257,7 +253,7 @@ class TestSaveLoadMetadata:
         output_path = str(tmp_path / "test_metadata.json")
         result_path = save_metadata(metadata, output_path)
 
-        assert os.path.exists(result_path)
+        assert Path(result_path).exists()
         assert result_path == output_path
 
     def test_load_metadata(self, tmp_path):

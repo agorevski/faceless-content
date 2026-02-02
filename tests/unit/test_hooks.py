@@ -3,15 +3,9 @@ Tests for the hooks module.
 Tests first-frame hooks, pattern interrupts, mid-video retention, and comment bait.
 """
 
-import os
-import sys
-
 import pytest
 
-# Add pipeline directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "pipeline"))
-
-from hooks import (
+from faceless.core.hooks import (
     COMMENT_TRIGGERS,
     FIRST_FRAME_HOOKS,
     LOOP_STRUCTURES,

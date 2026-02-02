@@ -3,15 +3,9 @@ Tests for the hashtags module.
 Tests hashtag ladder system and generation utilities.
 """
 
-import os
-import sys
-
 import pytest
 
-# Add pipeline directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "pipeline"))
-
-from hashtags import (
+from faceless.core.hashtags import (
     HASHTAG_LADDER,
     TRENDING_TOPICS,
     analyze_hashtag_coverage,

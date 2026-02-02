@@ -3,15 +3,9 @@ Tests for the tiktok_formats module.
 Tests TikTok-native content format definitions and utilities.
 """
 
-import os
-import sys
-
 import pytest
 
-# Add pipeline directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "pipeline"))
-
-from tiktok_formats import (
+from faceless.core.tiktok_formats import (
     ALL_FORMATS,
     FINANCE_FORMATS,
     LUXURY_FORMATS,
