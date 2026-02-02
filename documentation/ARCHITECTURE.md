@@ -101,7 +101,10 @@ faceless-content/
 │   │   ├── enhancer_service.py # Script enhancement with GPT
 │   │   ├── image_service.py    # Image generation
 │   │   ├── tts_service.py      # Text-to-speech generation
-│   │   └── video_service.py    # Video assembly with FFmpeg
+│   │   ├── video_service.py    # Video assembly with FFmpeg
+│   │   ├── research_service.py # Deep topic research
+│   │   ├── quality_service.py  # Script quality evaluation
+│   │   └── trending_service.py # Trending topic discovery
 │   │
 │   └── utils/                  # Utilities
 │       ├── __init__.py
@@ -211,6 +214,32 @@ Assembles final videos:
 - Scene concatenation
 - Background music mixing
 - Platform-specific encoding
+
+#### DeepResearchService
+Conducts AI-powered topic research:
+- Four depth levels: quick, standard, deep, investigative
+- Generates key findings, statistics, expert quotes
+- Identifies counterarguments and recent developments
+- Suggests hooks and content structure
+- CLI: `faceless research "topic" -n niche -d depth`
+
+#### QualityService
+Evaluates script quality before production:
+- Hook quality scoring (0-10 scale)
+- Retention curve prediction
+- Engagement potential analysis
+- Quality gates enforcement
+- Hook improvement suggestions
+- CLI: `faceless quality script.json`
+
+#### TrendingService
+Discovers trending topics for content:
+- Reddit hot topic analysis
+- AI-suggested trending topics
+- Topic lifecycle tracking (emerging, rising, peak, declining, evergreen)
+- Viral potential scoring
+- Content calendar recommendations
+- CLI: `faceless trending niche`
 
 ### 4. Clients Layer (`clients/`)
 

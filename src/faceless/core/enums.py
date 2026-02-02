@@ -16,9 +16,34 @@ class Niche(str, Enum):
     configured in the settings module.
     """
 
+    # Original niches
     SCARY_STORIES = "scary-stories"
     FINANCE = "finance"
     LUXURY = "luxury"
+
+    # New evergreen niches
+    TRUE_CRIME = "true-crime"
+    PSYCHOLOGY_FACTS = "psychology-facts"
+    HISTORY = "history"
+    MOTIVATION = "motivation"
+    SPACE_ASTRONOMY = "space-astronomy"
+    CONSPIRACY_MYSTERIES = "conspiracy-mysteries"
+    ANIMAL_FACTS = "animal-facts"
+    HEALTH_WELLNESS = "health-wellness"
+    RELATIONSHIP_ADVICE = "relationship-advice"
+    TECH_GADGETS = "tech-gadgets"
+    LIFE_HACKS = "life-hacks"
+    MYTHOLOGY_FOLKLORE = "mythology-folklore"
+    UNSOLVED_MYSTERIES = "unsolved-mysteries"
+    GEOGRAPHY_FACTS = "geography-facts"
+    AI_FUTURE_TECH = "ai-future-tech"
+    PHILOSOPHY = "philosophy"
+    BOOK_SUMMARIES = "book-summaries"
+    CELEBRITY_NET_WORTH = "celebrity-net-worth"
+    SURVIVAL_TIPS = "survival-tips"
+    SLEEP_RELAXATION = "sleep-relaxation"
+    NETFLIX_RECOMMENDATIONS = "netflix-recommendations"
+    MOCKUMENTARY_HOWMADE = "mockumentary-howmade"
 
     @property
     def display_name(self) -> str:
@@ -27,6 +52,28 @@ class Niche(str, Enum):
             Niche.SCARY_STORIES: "Scary Stories",
             Niche.FINANCE: "Finance",
             Niche.LUXURY: "Luxury",
+            Niche.TRUE_CRIME: "True Crime",
+            Niche.PSYCHOLOGY_FACTS: "Psychology Facts",
+            Niche.HISTORY: "History",
+            Niche.MOTIVATION: "Motivation",
+            Niche.SPACE_ASTRONOMY: "Space & Astronomy",
+            Niche.CONSPIRACY_MYSTERIES: "Conspiracy & Mysteries",
+            Niche.ANIMAL_FACTS: "Animal Facts",
+            Niche.HEALTH_WELLNESS: "Health & Wellness",
+            Niche.RELATIONSHIP_ADVICE: "Relationship Advice",
+            Niche.TECH_GADGETS: "Tech & Gadgets",
+            Niche.LIFE_HACKS: "Life Hacks",
+            Niche.MYTHOLOGY_FOLKLORE: "Mythology & Folklore",
+            Niche.UNSOLVED_MYSTERIES: "Unsolved Mysteries",
+            Niche.GEOGRAPHY_FACTS: "Geography Facts",
+            Niche.AI_FUTURE_TECH: "AI & Future Tech",
+            Niche.PHILOSOPHY: "Philosophy",
+            Niche.BOOK_SUMMARIES: "Book Summaries",
+            Niche.CELEBRITY_NET_WORTH: "Celebrity Net Worth",
+            Niche.SURVIVAL_TIPS: "Survival Tips",
+            Niche.SLEEP_RELAXATION: "Sleep & Relaxation",
+            Niche.NETFLIX_RECOMMENDATIONS: "Netflix Recommendations",
+            Niche.MOCKUMENTARY_HOWMADE: "Mockumentary How It's Made",
         }[self]
 
     @property
@@ -36,6 +83,48 @@ class Niche(str, Enum):
             Niche.SCARY_STORIES: ["nosleep", "LetsNotMeet", "creepypasta"],
             Niche.FINANCE: ["personalfinance", "financialindependence", "investing"],
             Niche.LUXURY: ["luxury", "watches", "cars"],
+            Niche.TRUE_CRIME: ["TrueCrime", "UnresolvedMysteries", "serialkillers"],
+            Niche.PSYCHOLOGY_FACTS: ["psychology", "AskScience", "todayilearned"],
+            Niche.HISTORY: ["history", "HistoryPorn", "AskHistorians"],
+            Niche.MOTIVATION: ["GetMotivated", "DecidingToBeBetter", "selfimprovement"],
+            Niche.SPACE_ASTRONOMY: ["space", "Astronomy", "astrophotography"],
+            Niche.CONSPIRACY_MYSTERIES: [
+                "conspiracy",
+                "HighStrangeness",
+                "Glitch_in_the_Matrix",
+            ],
+            Niche.ANIMAL_FACTS: [
+                "Awwducational",
+                "NatureIsFuckingLit",
+                "interestingasfuck",
+            ],
+            Niche.HEALTH_WELLNESS: ["HealthyFood", "Fitness", "nutrition"],
+            Niche.RELATIONSHIP_ADVICE: [
+                "relationship_advice",
+                "dating_advice",
+                "AskMen",
+            ],
+            Niche.TECH_GADGETS: ["gadgets", "technology", "Android"],
+            Niche.LIFE_HACKS: ["lifehacks", "LifeProTips", "productivity"],
+            Niche.MYTHOLOGY_FOLKLORE: ["mythology", "folklore", "Lovecraft"],
+            Niche.UNSOLVED_MYSTERIES: ["UnsolvedMysteries", "RBI", "Disappearances"],
+            Niche.GEOGRAPHY_FACTS: ["geography", "MapPorn", "todayilearned"],
+            Niche.AI_FUTURE_TECH: ["Futurology", "artificial", "singularity"],
+            Niche.PHILOSOPHY: ["philosophy", "Stoicism", "Existentialism"],
+            Niche.BOOK_SUMMARIES: ["books", "booksuggestions", "52book"],
+            Niche.CELEBRITY_NET_WORTH: ["Celebs", "entertainment", "popculturechat"],
+            Niche.SURVIVAL_TIPS: ["Survival", "preppers", "Bushcraft"],
+            Niche.SLEEP_RELAXATION: ["sleep", "Meditation", "asmr"],
+            Niche.NETFLIX_RECOMMENDATIONS: [
+                "NetflixBestOf",
+                "television",
+                "MovieSuggestions",
+            ],
+            Niche.MOCKUMENTARY_HOWMADE: [
+                "InterdimensionalCable",
+                "funny",
+                "AbsurdHumor",
+            ],
         }[self]
 
 

@@ -470,19 +470,31 @@ class VideoService(LoggerMixin):
 
                     args = [
                         "-y",
-                        "-loop", "1",
-                        "-i", str(scene.image_path),
-                        "-i", str(scene.audio_path),
-                        "-filter_complex", filter_complex,
-                        "-map", "[v]",
-                        "-map", "1:a",
-                        "-c:v", "libx264",
-                        "-preset", "medium",
-                        "-crf", "23",
-                        "-c:a", "aac",
-                        "-b:a", "192k",
+                        "-loop",
+                        "1",
+                        "-i",
+                        str(scene.image_path),
+                        "-i",
+                        str(scene.audio_path),
+                        "-filter_complex",
+                        filter_complex,
+                        "-map",
+                        "[v]",
+                        "-map",
+                        "1:a",
+                        "-c:v",
+                        "libx264",
+                        "-preset",
+                        "medium",
+                        "-crf",
+                        "23",
+                        "-c:a",
+                        "aac",
+                        "-b:a",
+                        "192k",
                         "-shortest",
-                        "-pix_fmt", "yuv420p",
+                        "-pix_fmt",
+                        "yuv420p",
                         str(output_path),
                     ]
 
@@ -493,7 +505,10 @@ class VideoService(LoggerMixin):
 
             with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
                 future_to_scene = {
-                    executor.submit(create_single_scene, scene, output_path): (scene, output_path)
+                    executor.submit(create_single_scene, scene, output_path): (
+                        scene,
+                        output_path,
+                    )
                     for scene, output_path in scenes_to_process
                 }
 

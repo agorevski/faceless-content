@@ -316,6 +316,35 @@ def format_metadata_for_display(metadata: dict) -> str:
 # STANDALONE USAGE
 # =============================================================================
 
+# All available niches
+ALL_NICHES = [
+    "scary-stories",
+    "finance",
+    "luxury",
+    "true-crime",
+    "psychology-facts",
+    "history",
+    "motivation",
+    "space-astronomy",
+    "conspiracy-mysteries",
+    "animal-facts",
+    "health-wellness",
+    "relationship-advice",
+    "tech-gadgets",
+    "life-hacks",
+    "mythology-folklore",
+    "unsolved-mysteries",
+    "geography-facts",
+    "ai-future-tech",
+    "philosophy",
+    "book-summaries",
+    "celebrity-net-worth",
+    "survival-tips",
+    "sleep-relaxation",
+    "netflix-recommendations",
+    "mockumentary-howmade",
+]
+
 if __name__ == "__main__":
     import argparse
 
@@ -325,7 +354,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--niche",
         "-n",
-        choices=["scary-stories", "finance", "luxury"],
+        choices=ALL_NICHES,
         default="scary-stories",
         help="Content niche",
     )

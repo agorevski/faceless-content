@@ -1,7 +1,7 @@
 # Faceless Content Pipeline - Cline Rules
 
 ## Project Overview
-This is a Python-based content production pipeline for creating "faceless" videos (YouTube/TikTok) with AI-generated images, text-to-speech narration, and automated video assembly. It supports three content niches: scary-stories, finance, and luxury.
+This is a Python-based content production pipeline for creating "faceless" videos (YouTube/TikTok) with AI-generated images, text-to-speech narration, and automated video assembly. It supports 23 content niches across various categories including scary-stories, finance, luxury, true-crime, psychology-facts, history, motivation, space-astronomy, conspiracy-mysteries, animal-facts, health-wellness, relationship-advice, tech-gadgets, life-hacks, mythology-folklore, unsolved-mysteries, geography-facts, ai-future-tech, philosophy, book-summaries, celebrity-net-worth, survival-tips, and sleep-relaxation.
 
 ## Technology Stack
 - **Language:** Python 3.10+ (3.11+ recommended)
@@ -27,15 +27,19 @@ faceless-content/
 │   │   └── azure_openai.py # Azure OpenAI client
 │   ├── config/             # Pydantic settings configuration
 │   ├── core/               # Domain models and types
-│   │   ├── enums.py        # Enums (Niche, Platform, etc.)
+│   │   ├── enums.py        # Enums (Niche, Platform, Voice, JobStatus, etc.)
 │   │   ├── exceptions.py   # Custom exception classes
 │   │   └── models.py       # Pydantic data models
 │   ├── services/           # Business logic layer
-│   │   ├── enhancer_service.py
-│   │   ├── image_service.py
-│   │   ├── tts_service.py
-│   │   └── video_service.py
+│   │   ├── enhancer_service.py  # Script enhancement with GPT
+│   │   ├── image_service.py     # AI image generation
+│   │   ├── tts_service.py       # Text-to-speech generation
+│   │   ├── video_service.py     # Video assembly
+│   │   ├── research_service.py  # Deep research on topics
+│   │   ├── quality_service.py   # Script quality evaluation
+│   │   └── trending_service.py  # Trending topic discovery
 │   ├── pipeline/           # Pipeline orchestration
+│   │   └── orchestrator.py # Main pipeline coordinator
 │   ├── utils/              # Utilities (logging, helpers)
 │   ├── __init__.py
 │   └── __main__.py         # Entry point for python -m faceless
@@ -44,11 +48,19 @@ faceless-content/
 │   ├── conftest.py         # Pytest fixtures
 │   └── __init__.py
 ├── pipeline/               # Legacy pipeline code (excluded from linting)
+│   ├── image_generator.py
+│   ├── script_enhancer.py
+│   ├── story_scraper.py
+│   ├── tts_generator.py
+│   ├── video_assembler.py
+│   └── ...                 # Other legacy modules
 ├── documentation/          # Project documentation
 ├── shared/                 # Shared resources
 │   ├── templates/          # Video templates
-│   ├── prompts/            # Prompt templates
+│   ├── prompts/            # Prompt templates (image_prompts.py)
 │   └── music/              # Background music
+├── {niche}/                # Niche-specific directories (23 total)
+│   └── scripts/            # Story/content scripts per niche
 ├── output/                 # Generated content (gitignored)
 ├── pyproject.toml          # Project configuration and dependencies
 ├── .env                    # Environment variables (gitignored)
@@ -99,8 +111,21 @@ faceless-content/
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
 AZURE_OPENAI_API_KEY=your-api-key
 AZURE_OPENAI_IMAGE_DEPLOYMENT=gpt-image-1
+AZURE_OPENAI_IMAGE_API_VERSION=2025-04-01-preview
 AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-4o
+AZURE_OPENAI_CHAT_API_VERSION=2024-08-01-preview
 AZURE_OPENAI_TTS_DEPLOYMENT=gpt-4o-mini-tts
+AZURE_OPENAI_TTS_API_VERSION=2025-03-01-preview
+```
+
+### Optional Environment Variables
+```env
+USE_ELEVENLABS=false
+ELEVENLABS_API_KEY=your-key
+MAX_CONCURRENT_IMAGES=10
+MAX_CONCURRENT_TTS=10
+MAX_CONCURRENT_VIDEOS=4
+ENABLE_CHECKPOINTING=true
 ```
 
 ## Script JSON Format
@@ -137,15 +162,51 @@ faceless generate NICHE      # Generate video content
 faceless validate            # Validate configuration
 faceless init                # Initialize project directories
 faceless info                # Show pipeline configuration
+faceless research TOPIC      # Research a topic for content
+faceless quality SCRIPT      # Evaluate script quality
+faceless trending NICHE      # Discover trending topics
 
 # Generate command options
 faceless generate scary-stories -c 3 -p youtube --enhance
-  -c, --count INTEGER       Number of videos [default: 1]
+  -c, --count INTEGER       Number of videos (1-10) [default: 1]
   -p, --platform            Target platform(s) [default: youtube, tiktok]
-  -s, --script PATH         Path to existing script
+  -s, --script PATH         Path to existing script file
   -e, --enhance             Enhance scripts with GPT
   -t, --thumbnails          Generate thumbnails [default: True]
   --subtitles               Generate subtitle files [default: True]
+  -m, --music PATH          Path to background music file
+  --skip-fetch              Skip fetching new stories
+
+# Research command options
+faceless research "Topic name" -n finance -d deep --structure -o research.json
+  -n, --niche               Content niche for context [default: finance]
+  -d, --depth               Research depth: quick, standard, deep, investigative
+  -s, --structure           Generate content structure recommendation
+  -o, --output PATH         Save research to JSON file
+
+# Quality command options
+faceless quality path/to/script.json --strict --improve-hooks
+  --strict                  Require all quality gates to pass
+  -i, --improve-hooks       Generate improved hook alternatives
+  -o, --output PATH         Save quality report to JSON file
+
+# Trending command options
+faceless trending scary-stories --calendar -o trends.json
+  -c, --count INTEGER       Number of topics to show [default: 10]
+  -a, --analyze TOPIC       Analyze a specific topic's potential
+  --calendar                Show content calendar suggestions
+  -o, --output PATH         Save trend report to JSON file
+
+# Validate command options
+faceless validate --test-connections  # Test API connectivity
+faceless validate -n scary-stories    # Validate for specific niche
+
+# Available niches (23 total):
+# scary-stories, finance, luxury, true-crime, psychology-facts, history,
+# motivation, space-astronomy, conspiracy-mysteries, animal-facts,
+# health-wellness, relationship-advice, tech-gadgets, life-hacks,
+# mythology-folklore, unsolved-mysteries, geography-facts, ai-future-tech,
+# philosophy, book-summaries, celebrity-net-worth, survival-tips, sleep-relaxation
 ```
 
 ## Development Commands
@@ -180,6 +241,10 @@ pre-commit install
 4. Checkpointing system allows resuming failed runs
 5. TikTok cuts are automatically generated from YouTube videos
 6. The `pipeline/` directory contains legacy code and is excluded from linting
+7. Each niche has its own directory with subreddit sources defined in `core/enums.py`
+8. Platform settings (resolution, aspect ratio, image sizes) are defined in `Platform` enum
+9. Voice settings per niche are configurable via settings
+10. Concurrent processing limits are configurable via environment variables
 
 ## Testing
 - Tests are in `tests/` directory using pytest
@@ -190,11 +255,24 @@ pre-commit install
 
 ## Dependencies
 Core dependencies (from pyproject.toml):
-- `pydantic` / `pydantic-settings` - Data validation and settings
-- `httpx` - Async HTTP client
-- `tenacity` - Retry logic
-- `structlog` - Structured logging
-- `typer[all]` - CLI framework
-- `rich` - Terminal formatting
-- `python-dotenv` - Environment variable loading
+- `pydantic>=2.5.0` / `pydantic-settings>=2.1.0` - Data validation and settings
+- `httpx>=0.25.0` - Async HTTP client
+- `tenacity>=8.2.0` - Retry logic
+- `structlog>=23.2.0` - Structured logging
+- `typer[all]>=0.9.0` - CLI framework
+- `rich>=13.7.0` - Terminal formatting
+- `python-dotenv>=1.0.0` - Environment variable loading
 - `ffmpeg` - External binary for video processing
+
+Dev dependencies:
+- `pytest>=7.4.0`, `pytest-asyncio>=0.21.0`, `pytest-cov>=4.1.0`, `pytest-mock>=3.12.0`
+- `mypy>=1.7.0`, `ruff>=0.1.6`, `black>=23.11.0`
+- `pre-commit>=3.6.0`, `respx>=0.20.0`
+
+## Core Enums Reference
+- **Niche** (23 values): Content categories with display names, subreddit sources
+- **Platform** (2 values): YOUTUBE (1920x1080, 16:9), TIKTOK (1080x1920, 9:16)
+- **JobStatus** (11 values): Pipeline job states (pending → completed/failed)
+- **Voice** (6 values): Azure TTS voices (alloy, echo, fable, onyx, nova, shimmer)
+- **ImageQuality** (3 values): standard, high, hd
+- **ThumbnailConcept** (8 values): A/B testing concepts (reaction, reveal, mystery, etc.)

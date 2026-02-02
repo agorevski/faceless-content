@@ -33,9 +33,31 @@ from faceless.config.settings import (
 
 # Import image settings from shared prompts
 from prompts.image_prompts import (
+    AI_FUTURE_TECH_IMAGE_SETTINGS,
+    ANIMAL_FACTS_IMAGE_SETTINGS,
+    BOOK_SUMMARIES_IMAGE_SETTINGS,
+    CELEBRITY_NET_WORTH_IMAGE_SETTINGS,
+    CONSPIRACY_MYSTERIES_IMAGE_SETTINGS,
     FINANCE_IMAGE_SETTINGS,
+    GEOGRAPHY_FACTS_IMAGE_SETTINGS,
+    HEALTH_WELLNESS_IMAGE_SETTINGS,
+    HISTORY_IMAGE_SETTINGS,
+    LIFE_HACKS_IMAGE_SETTINGS,
     LUXURY_IMAGE_SETTINGS,
+    MOCKUMENTARY_HOWMADE_IMAGE_SETTINGS,
+    MOTIVATION_IMAGE_SETTINGS,
+    MYTHOLOGY_FOLKLORE_IMAGE_SETTINGS,
+    NETFLIX_RECOMMENDATIONS_IMAGE_SETTINGS,
+    PHILOSOPHY_IMAGE_SETTINGS,
+    PSYCHOLOGY_FACTS_IMAGE_SETTINGS,
+    RELATIONSHIP_ADVICE_IMAGE_SETTINGS,
     SCARY_STORIES_IMAGE_SETTINGS,
+    SLEEP_RELAXATION_IMAGE_SETTINGS,
+    SPACE_ASTRONOMY_IMAGE_SETTINGS,
+    SURVIVAL_TIPS_IMAGE_SETTINGS,
+    TECH_GADGETS_IMAGE_SETTINGS,
+    TRUE_CRIME_IMAGE_SETTINGS,
+    UNSOLVED_MYSTERIES_IMAGE_SETTINGS,
     build_enhanced_prompt,
     get_image_settings,
 )
@@ -96,9 +118,33 @@ VOICE_SETTINGS = get_legacy_voice_settings(_settings)
 
 # Combine all image settings into one dict matching old config.py structure
 IMAGE_SETTINGS = {
+    # Original niches
     "scary-stories": SCARY_STORIES_IMAGE_SETTINGS,
     "finance": FINANCE_IMAGE_SETTINGS,
     "luxury": LUXURY_IMAGE_SETTINGS,
+    # New niches
+    "true-crime": TRUE_CRIME_IMAGE_SETTINGS,
+    "psychology-facts": PSYCHOLOGY_FACTS_IMAGE_SETTINGS,
+    "history": HISTORY_IMAGE_SETTINGS,
+    "motivation": MOTIVATION_IMAGE_SETTINGS,
+    "space-astronomy": SPACE_ASTRONOMY_IMAGE_SETTINGS,
+    "conspiracy-mysteries": CONSPIRACY_MYSTERIES_IMAGE_SETTINGS,
+    "animal-facts": ANIMAL_FACTS_IMAGE_SETTINGS,
+    "health-wellness": HEALTH_WELLNESS_IMAGE_SETTINGS,
+    "relationship-advice": RELATIONSHIP_ADVICE_IMAGE_SETTINGS,
+    "tech-gadgets": TECH_GADGETS_IMAGE_SETTINGS,
+    "life-hacks": LIFE_HACKS_IMAGE_SETTINGS,
+    "mythology-folklore": MYTHOLOGY_FOLKLORE_IMAGE_SETTINGS,
+    "unsolved-mysteries": UNSOLVED_MYSTERIES_IMAGE_SETTINGS,
+    "geography-facts": GEOGRAPHY_FACTS_IMAGE_SETTINGS,
+    "ai-future-tech": AI_FUTURE_TECH_IMAGE_SETTINGS,
+    "philosophy": PHILOSOPHY_IMAGE_SETTINGS,
+    "book-summaries": BOOK_SUMMARIES_IMAGE_SETTINGS,
+    "celebrity-net-worth": CELEBRITY_NET_WORTH_IMAGE_SETTINGS,
+    "survival-tips": SURVIVAL_TIPS_IMAGE_SETTINGS,
+    "sleep-relaxation": SLEEP_RELAXATION_IMAGE_SETTINGS,
+    "netflix-recommendations": NETFLIX_RECOMMENDATIONS_IMAGE_SETTINGS,
+    "mockumentary-howmade": MOCKUMENTARY_HOWMADE_IMAGE_SETTINGS,
 }
 
 # =============================================================================

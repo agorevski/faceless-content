@@ -126,9 +126,59 @@ class ElevenLabsSettings(BaseSettings):
     )
 
     api_key: str = Field(default="", description="ElevenLabs API key")
+    # Original niches
     voice_id_scary: str = Field(default="", description="Voice ID for scary stories")
     voice_id_finance: str = Field(default="", description="Voice ID for finance")
     voice_id_luxury: str = Field(default="", description="Voice ID for luxury")
+    # New niches
+    voice_id_true_crime: str = Field(default="", description="Voice ID for true crime")
+    voice_id_psychology: str = Field(
+        default="", description="Voice ID for psychology facts"
+    )
+    voice_id_history: str = Field(default="", description="Voice ID for history")
+    voice_id_motivation: str = Field(default="", description="Voice ID for motivation")
+    voice_id_space: str = Field(
+        default="", description="Voice ID for space & astronomy"
+    )
+    voice_id_conspiracy: str = Field(
+        default="", description="Voice ID for conspiracy & mysteries"
+    )
+    voice_id_animals: str = Field(default="", description="Voice ID for animal facts")
+    voice_id_health: str = Field(
+        default="", description="Voice ID for health & wellness"
+    )
+    voice_id_relationships: str = Field(
+        default="", description="Voice ID for relationship advice"
+    )
+    voice_id_tech: str = Field(default="", description="Voice ID for tech & gadgets")
+    voice_id_lifehacks: str = Field(default="", description="Voice ID for life hacks")
+    voice_id_mythology: str = Field(
+        default="", description="Voice ID for mythology & folklore"
+    )
+    voice_id_unsolved: str = Field(
+        default="", description="Voice ID for unsolved mysteries"
+    )
+    voice_id_geography: str = Field(
+        default="", description="Voice ID for geography facts"
+    )
+    voice_id_ai_future: str = Field(
+        default="", description="Voice ID for AI & future tech"
+    )
+    voice_id_philosophy: str = Field(default="", description="Voice ID for philosophy")
+    voice_id_books: str = Field(default="", description="Voice ID for book summaries")
+    voice_id_celebrity: str = Field(
+        default="", description="Voice ID for celebrity net worth"
+    )
+    voice_id_survival: str = Field(default="", description="Voice ID for survival tips")
+    voice_id_sleep: str = Field(
+        default="", description="Voice ID for sleep & relaxation"
+    )
+    voice_id_netflix: str = Field(
+        default="", description="Voice ID for Netflix recommendations"
+    )
+    voice_id_mockumentary: str = Field(
+        default="", description="Voice ID for mockumentary How It's Made"
+    )
 
     def get_voice_id(self, niche: Niche) -> str:
         """Get voice ID for a specific niche."""
@@ -136,6 +186,28 @@ class ElevenLabsSettings(BaseSettings):
             Niche.SCARY_STORIES: self.voice_id_scary,
             Niche.FINANCE: self.voice_id_finance,
             Niche.LUXURY: self.voice_id_luxury,
+            Niche.TRUE_CRIME: self.voice_id_true_crime,
+            Niche.PSYCHOLOGY_FACTS: self.voice_id_psychology,
+            Niche.HISTORY: self.voice_id_history,
+            Niche.MOTIVATION: self.voice_id_motivation,
+            Niche.SPACE_ASTRONOMY: self.voice_id_space,
+            Niche.CONSPIRACY_MYSTERIES: self.voice_id_conspiracy,
+            Niche.ANIMAL_FACTS: self.voice_id_animals,
+            Niche.HEALTH_WELLNESS: self.voice_id_health,
+            Niche.RELATIONSHIP_ADVICE: self.voice_id_relationships,
+            Niche.TECH_GADGETS: self.voice_id_tech,
+            Niche.LIFE_HACKS: self.voice_id_lifehacks,
+            Niche.MYTHOLOGY_FOLKLORE: self.voice_id_mythology,
+            Niche.UNSOLVED_MYSTERIES: self.voice_id_unsolved,
+            Niche.GEOGRAPHY_FACTS: self.voice_id_geography,
+            Niche.AI_FUTURE_TECH: self.voice_id_ai_future,
+            Niche.PHILOSOPHY: self.voice_id_philosophy,
+            Niche.BOOK_SUMMARIES: self.voice_id_books,
+            Niche.CELEBRITY_NET_WORTH: self.voice_id_celebrity,
+            Niche.SURVIVAL_TIPS: self.voice_id_survival,
+            Niche.SLEEP_RELAXATION: self.voice_id_sleep,
+            Niche.NETFLIX_RECOMMENDATIONS: self.voice_id_netflix,
+            Niche.MOCKUMENTARY_HOWMADE: self.voice_id_mockumentary,
         }
         return voice_map.get(niche, "")
 
@@ -300,13 +372,59 @@ class Settings(BaseSettings):
         description="Enable subtitle generation",
     )
 
-    # Voice settings per niche
+    # Voice settings per niche - Original
     voice_scary_stories: Voice = Field(default=Voice.ONYX)
     voice_speed_scary_stories: float = Field(default=0.9)
     voice_finance: Voice = Field(default=Voice.ONYX)
     voice_speed_finance: float = Field(default=1.0)
     voice_luxury: Voice = Field(default=Voice.NOVA)
     voice_speed_luxury: float = Field(default=0.95)
+
+    # Voice settings per niche - New niches
+    voice_true_crime: Voice = Field(default=Voice.ONYX)
+    voice_speed_true_crime: float = Field(default=0.9)
+    voice_psychology_facts: Voice = Field(default=Voice.NOVA)
+    voice_speed_psychology_facts: float = Field(default=1.0)
+    voice_history: Voice = Field(default=Voice.ONYX)
+    voice_speed_history: float = Field(default=0.95)
+    voice_motivation: Voice = Field(default=Voice.ECHO)
+    voice_speed_motivation: float = Field(default=1.0)
+    voice_space_astronomy: Voice = Field(default=Voice.ONYX)
+    voice_speed_space_astronomy: float = Field(default=0.95)
+    voice_conspiracy_mysteries: Voice = Field(default=Voice.ONYX)
+    voice_speed_conspiracy_mysteries: float = Field(default=0.9)
+    voice_animal_facts: Voice = Field(default=Voice.NOVA)
+    voice_speed_animal_facts: float = Field(default=1.0)
+    voice_health_wellness: Voice = Field(default=Voice.NOVA)
+    voice_speed_health_wellness: float = Field(default=1.0)
+    voice_relationship_advice: Voice = Field(default=Voice.NOVA)
+    voice_speed_relationship_advice: float = Field(default=0.95)
+    voice_tech_gadgets: Voice = Field(default=Voice.ALLOY)
+    voice_speed_tech_gadgets: float = Field(default=1.0)
+    voice_life_hacks: Voice = Field(default=Voice.ECHO)
+    voice_speed_life_hacks: float = Field(default=1.05)
+    voice_mythology_folklore: Voice = Field(default=Voice.FABLE)
+    voice_speed_mythology_folklore: float = Field(default=0.9)
+    voice_unsolved_mysteries: Voice = Field(default=Voice.ONYX)
+    voice_speed_unsolved_mysteries: float = Field(default=0.9)
+    voice_geography_facts: Voice = Field(default=Voice.NOVA)
+    voice_speed_geography_facts: float = Field(default=1.0)
+    voice_ai_future_tech: Voice = Field(default=Voice.ALLOY)
+    voice_speed_ai_future_tech: float = Field(default=1.0)
+    voice_philosophy: Voice = Field(default=Voice.ONYX)
+    voice_speed_philosophy: float = Field(default=0.9)
+    voice_book_summaries: Voice = Field(default=Voice.NOVA)
+    voice_speed_book_summaries: float = Field(default=1.0)
+    voice_celebrity_net_worth: Voice = Field(default=Voice.ECHO)
+    voice_speed_celebrity_net_worth: float = Field(default=1.0)
+    voice_survival_tips: Voice = Field(default=Voice.ONYX)
+    voice_speed_survival_tips: float = Field(default=0.95)
+    voice_sleep_relaxation: Voice = Field(default=Voice.SHIMMER)
+    voice_speed_sleep_relaxation: float = Field(default=0.8)
+    voice_netflix_recommendations: Voice = Field(default=Voice.ECHO)
+    voice_speed_netflix_recommendations: float = Field(default=1.0)
+    voice_mockumentary_howmade: Voice = Field(default=Voice.FABLE)
+    voice_speed_mockumentary_howmade: float = Field(default=0.95)
 
     def get_voice_settings(self, niche: Niche) -> tuple[Voice, float]:
         """Get voice and speed settings for a niche."""
@@ -317,6 +435,79 @@ class Settings(BaseSettings):
             ),
             Niche.FINANCE: (self.voice_finance, self.voice_speed_finance),
             Niche.LUXURY: (self.voice_luxury, self.voice_speed_luxury),
+            Niche.TRUE_CRIME: (self.voice_true_crime, self.voice_speed_true_crime),
+            Niche.PSYCHOLOGY_FACTS: (
+                self.voice_psychology_facts,
+                self.voice_speed_psychology_facts,
+            ),
+            Niche.HISTORY: (self.voice_history, self.voice_speed_history),
+            Niche.MOTIVATION: (self.voice_motivation, self.voice_speed_motivation),
+            Niche.SPACE_ASTRONOMY: (
+                self.voice_space_astronomy,
+                self.voice_speed_space_astronomy,
+            ),
+            Niche.CONSPIRACY_MYSTERIES: (
+                self.voice_conspiracy_mysteries,
+                self.voice_speed_conspiracy_mysteries,
+            ),
+            Niche.ANIMAL_FACTS: (
+                self.voice_animal_facts,
+                self.voice_speed_animal_facts,
+            ),
+            Niche.HEALTH_WELLNESS: (
+                self.voice_health_wellness,
+                self.voice_speed_health_wellness,
+            ),
+            Niche.RELATIONSHIP_ADVICE: (
+                self.voice_relationship_advice,
+                self.voice_speed_relationship_advice,
+            ),
+            Niche.TECH_GADGETS: (
+                self.voice_tech_gadgets,
+                self.voice_speed_tech_gadgets,
+            ),
+            Niche.LIFE_HACKS: (self.voice_life_hacks, self.voice_speed_life_hacks),
+            Niche.MYTHOLOGY_FOLKLORE: (
+                self.voice_mythology_folklore,
+                self.voice_speed_mythology_folklore,
+            ),
+            Niche.UNSOLVED_MYSTERIES: (
+                self.voice_unsolved_mysteries,
+                self.voice_speed_unsolved_mysteries,
+            ),
+            Niche.GEOGRAPHY_FACTS: (
+                self.voice_geography_facts,
+                self.voice_speed_geography_facts,
+            ),
+            Niche.AI_FUTURE_TECH: (
+                self.voice_ai_future_tech,
+                self.voice_speed_ai_future_tech,
+            ),
+            Niche.PHILOSOPHY: (self.voice_philosophy, self.voice_speed_philosophy),
+            Niche.BOOK_SUMMARIES: (
+                self.voice_book_summaries,
+                self.voice_speed_book_summaries,
+            ),
+            Niche.CELEBRITY_NET_WORTH: (
+                self.voice_celebrity_net_worth,
+                self.voice_speed_celebrity_net_worth,
+            ),
+            Niche.SURVIVAL_TIPS: (
+                self.voice_survival_tips,
+                self.voice_speed_survival_tips,
+            ),
+            Niche.SLEEP_RELAXATION: (
+                self.voice_sleep_relaxation,
+                self.voice_speed_sleep_relaxation,
+            ),
+            Niche.NETFLIX_RECOMMENDATIONS: (
+                self.voice_netflix_recommendations,
+                self.voice_speed_netflix_recommendations,
+            ),
+            Niche.MOCKUMENTARY_HOWMADE: (
+                self.voice_mockumentary_howmade,
+                self.voice_speed_mockumentary_howmade,
+            ),
         }
         return settings_map.get(niche, (Voice.ONYX, 1.0))
 

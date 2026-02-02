@@ -4,6 +4,7 @@ CLI commands for the Faceless Content Pipeline.
 This module defines all CLI commands using Typer.
 """
 
+import json
 from pathlib import Path
 from typing import Annotated
 
@@ -261,7 +262,7 @@ def generate(
             import traceback
 
             console.print(f"[dim]{traceback.format_exc()}[/]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
 
 # =============================================================================
@@ -476,6 +477,527 @@ def info() -> None:
         voice_table.add_row(niche.display_name, voice.value, str(speed))
 
     console.print(voice_table)
+
+
+# =============================================================================
+# Research Command
+# =============================================================================
+
+
+@app.command()
+def research(
+    topic: Annotated[
+        str,
+        typer.Argument(
+            help="Topic to research",
+        ),
+    ],
+    niche: Annotated[
+        Niche,
+        typer.Option(
+            "--niche",
+            "-n",
+            help="Content niche for context",
+        ),
+    ] = Niche.FINANCE,
+    depth: Annotated[
+        str,
+        typer.Option(
+            "--depth",
+            "-d",
+            help="Research depth: quick, standard, deep, investigative",
+        ),
+    ] = "standard",
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Save research to JSON file",
+        ),
+    ] = None,
+    structure: Annotated[
+        bool,
+        typer.Option(
+            "--structure",
+            "-s",
+            help="Generate content structure recommendation",
+        ),
+    ] = False,
+) -> None:
+    """
+    Research a topic for content creation.
+
+    Performs deep research on a topic using AI to gather facts,
+    statistics, expert perspectives, and content recommendations.
+
+    Examples:
+
+        # Quick research on a topic
+        faceless research "Why diamonds are expensive" -n finance -d quick
+
+        # Deep research with structure recommendations
+        faceless research "The history of Bitcoin" -n finance -d deep --structure
+
+        # Save research to file
+        faceless research "Scary hotel stories" -n scary-stories -o research.json
+    """
+    from faceless.services.research_service import DeepResearchService, ResearchDepth
+
+    # Map depth string to enum
+    depth_map = {
+        "quick": ResearchDepth.QUICK,
+        "standard": ResearchDepth.STANDARD,
+        "deep": ResearchDepth.DEEP,
+        "investigative": ResearchDepth.INVESTIGATIVE,
+    }
+    research_depth = depth_map.get(depth.lower(), ResearchDepth.STANDARD)
+
+    console.print(
+        Panel.fit(
+            f"[bold blue]Researching:[/] {topic}\n"
+            f"[dim]Niche: {niche.display_name} | Depth: {research_depth.value}[/]",
+            title="🔬 Deep Research",
+        )
+    )
+
+    try:
+        service = DeepResearchService()
+
+        with console.status("[bold green]Researching topic..."):
+            result = service.research_topic(
+                topic=topic,
+                niche=niche,
+                depth=research_depth,
+            )
+
+        # Display results
+        console.print(
+            f"\n[bold green]✓ Research Complete[/] (Confidence: {result.confidence_score:.0%})\n"
+        )
+
+        # Key findings
+        if result.key_findings:
+            console.print("[bold]📋 Key Findings:[/]")
+            for i, finding in enumerate(result.key_findings[:5], 1):
+                importance = (
+                    "🔴"
+                    if finding.importance >= 0.8
+                    else "🟡" if finding.importance >= 0.5 else "⚪"
+                )
+                console.print(f"  {importance} {i}. {finding.content}")
+
+        # Statistics
+        if result.statistics:
+            console.print("\n[bold]📊 Statistics:[/]")
+            for stat in result.statistics[:3]:
+                console.print(f"  • {stat.content}")
+
+        # Suggested hook
+        if result.suggested_hook:
+            console.print(f'\n[bold]🎣 Suggested Hook:[/]\n  "{result.suggested_hook}"')
+
+        # Why it matters
+        if result.why_it_matters:
+            console.print(
+                f"\n[bold]💡 Why It Matters:[/]\n  {result.why_it_matters[:200]}..."
+            )
+
+        # Follow-up topics
+        if result.follow_up_topics:
+            console.print("\n[bold]🔗 Related Topics:[/]")
+            for topic_name in result.follow_up_topics[:5]:
+                console.print(f"  → {topic_name}")
+
+        # Generate structure if requested
+        if structure:
+            console.print("\n[bold]📝 Content Structure:[/]")
+            with console.status("[bold green]Generating structure..."):
+                struct = service.generate_content_structure(result)
+
+            if struct:
+                if "hook" in struct:
+                    console.print(f"  [cyan]Hook:[/] {struct['hook']}")
+                if "sections" in struct:
+                    for section in struct.get("sections", [])[:5]:
+                        duration = section.get("duration_seconds", 60)
+                        console.print(
+                            f"  [cyan]{section.get('title', 'Section')}[/] ({duration}s)"
+                        )
+                if "cta" in struct:
+                    console.print(f"  [cyan]CTA:[/] {struct['cta']}")
+
+        # Save to file if requested
+        if output:
+            output_data = result.to_dict()
+            if structure and struct:
+                output_data["content_structure"] = struct
+            output.write_text(json.dumps(output_data, indent=2, default=str))
+            console.print(f"\n[green]✓ Saved research to {output}[/]")
+
+    except Exception as e:
+        console.print(f"\n[red]✗ Research failed: {e}[/]")
+        raise typer.Exit(1) from None
+
+
+# =============================================================================
+# Quality Command
+# =============================================================================
+
+
+@app.command()
+def quality(
+    script_path: Annotated[
+        Path,
+        typer.Argument(
+            help="Path to script JSON file to evaluate",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+        ),
+    ],
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict",
+            help="Require all quality gates to pass",
+        ),
+    ] = False,
+    improve_hooks: Annotated[
+        bool,
+        typer.Option(
+            "--improve-hooks",
+            "-i",
+            help="Generate improved hook alternatives",
+        ),
+    ] = False,
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Save quality report to JSON file",
+        ),
+    ] = None,
+) -> None:
+    """
+    Evaluate script quality before production.
+
+    Analyzes a script for hook quality, retention potential,
+    and engagement factors. Helps filter weak content before
+    spending resources on generation.
+
+    Examples:
+
+        # Evaluate a script
+        faceless quality scripts/my-script.json
+
+        # Strict evaluation with hook suggestions
+        faceless quality scripts/my-script.json --strict --improve-hooks
+
+        # Save report to file
+        faceless quality scripts/my-script.json -o quality-report.json
+    """
+    from faceless.core.models import Script
+    from faceless.services.quality_service import QualityService
+
+    console.print(
+        Panel.fit(
+            f"[bold blue]Evaluating:[/] {script_path.name}\n"
+            f"[dim]Mode: {'Strict' if strict else 'Standard'}[/]",
+            title="📊 Quality Evaluation",
+        )
+    )
+
+    try:
+        # Load script
+        script = Script.from_json_file(script_path)
+        console.print(f"[dim]Script: {script.title} ({len(script.scenes)} scenes)[/]\n")
+
+        service = QualityService()
+
+        with console.status("[bold green]Analyzing quality..."):
+            result = service.evaluate_script(script, strict_mode=strict)
+
+        # Display scores
+        table = Table(title="Quality Scores")
+        table.add_column("Metric", style="cyan")
+        table.add_column("Score", justify="right")
+        table.add_column("Status")
+
+        def score_status(score: float, threshold: float = 7.0) -> str:
+            if score >= 8.0:
+                return "[green]Excellent[/]"
+            elif score >= threshold:
+                return "[green]Good[/]"
+            elif score >= 5.0:
+                return "[yellow]Fair[/]"
+            else:
+                return "[red]Poor[/]"
+
+        table.add_row(
+            "Overall",
+            f"{result.overall_score:.1f}/10",
+            score_status(result.overall_score, 6.5),
+        )
+        table.add_row(
+            "Hook", f"{result.hook_score:.1f}/10", score_status(result.hook_score, 7.0)
+        )
+        table.add_row(
+            "Narrative",
+            f"{result.narrative_score:.1f}/10",
+            score_status(result.narrative_score, 6.0),
+        )
+        table.add_row(
+            "Engagement",
+            f"{result.engagement_score:.1f}/10",
+            score_status(result.engagement_score, 5.0),
+        )
+        table.add_row(
+            "Information",
+            f"{result.information_score:.1f}/10",
+            score_status(result.information_score, 5.0),
+        )
+
+        console.print(table)
+
+        # Quality gates
+        console.print("\n[bold]Quality Gates:[/]")
+        for gate in result.gates_passed:
+            console.print(f"  [green]✓[/] {gate.value.replace('_', ' ').title()}")
+        for gate in result.gates_failed:
+            console.print(f"  [red]✗[/] {gate.value.replace('_', ' ').title()}")
+
+        # Hook analysis
+        if result.hook_analysis:
+            console.print("\n[bold]🎣 Hook Analysis:[/]")
+            console.print(f"  Type: {result.hook_analysis.hook_type}")
+            console.print(
+                f"  Attention Grab: {result.hook_analysis.attention_grab:.0%}"
+            )
+            console.print(f"  Curiosity Gap: {result.hook_analysis.curiosity_gap:.0%}")
+
+        # Retention prediction
+        if result.retention_analysis:
+            console.print("\n[bold]📈 Retention Prediction:[/]")
+            console.print(
+                f"  30-second retention: {result.retention_analysis.predicted_retention_30s:.0%}"
+            )
+            console.print(
+                f"  Completion rate: {result.retention_analysis.predicted_completion_rate:.0%}"
+            )
+            if result.retention_analysis.drop_off_risks:
+                console.print("  [yellow]⚠️ Drop-off risks:[/]")
+                for risk in result.retention_analysis.drop_off_risks[:3]:
+                    console.print(f"    • {risk}")
+
+        # Critical issues
+        if result.critical_issues:
+            console.print("\n[bold red]⚠️ Critical Issues:[/]")
+            for issue in result.critical_issues:
+                console.print(f"  • {issue}")
+
+        # Improvements
+        if result.improvements:
+            console.print("\n[bold]💡 Suggested Improvements:[/]")
+            for improvement in result.improvements[:5]:
+                console.print(f"  • {improvement}")
+
+        # Generate better hooks if requested
+        if improve_hooks:
+            console.print("\n[bold]🎣 Alternative Hooks:[/]")
+            with console.status("[bold green]Generating hooks..."):
+                hooks = service.generate_better_hooks(script, count=3)
+            for i, hook in enumerate(hooks, 1):
+                console.print(f'  {i}. "{hook}"')
+
+        # Verdict
+        if result.approved_for_production:
+            console.print("\n[bold green]✓ APPROVED for production[/]")
+        else:
+            console.print("\n[bold red]✗ NOT APPROVED - improve before production[/]")
+
+        # Save report if requested
+        if output:
+            output.write_text(json.dumps(result.to_dict(), indent=2, default=str))
+            console.print(f"\n[green]✓ Saved report to {output}[/]")
+
+        # Exit code based on approval
+        if not result.approved_for_production:
+            raise typer.Exit(1)
+
+    except typer.Exit:
+        raise
+    except Exception as e:
+        console.print(f"\n[red]✗ Quality evaluation failed: {e}[/]")
+        raise typer.Exit(1) from None
+
+
+# =============================================================================
+# Trending Command
+# =============================================================================
+
+
+@app.command()
+def trending(
+    niche: Annotated[
+        Niche,
+        typer.Argument(
+            help="Content niche to get trends for",
+        ),
+    ],
+    count: Annotated[
+        int,
+        typer.Option(
+            "--count",
+            "-c",
+            help="Number of trending topics to show",
+            min=1,
+            max=20,
+        ),
+    ] = 10,
+    analyze: Annotated[
+        str | None,
+        typer.Option(
+            "--analyze",
+            "-a",
+            help="Analyze a specific topic's potential",
+        ),
+    ] = None,
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Save trend report to JSON file",
+        ),
+    ] = None,
+    calendar: Annotated[
+        bool,
+        typer.Option(
+            "--calendar",
+            help="Show content calendar suggestions",
+        ),
+    ] = False,
+) -> None:
+    """
+    Discover trending topics for a niche.
+
+    Finds hot topics from Reddit and AI suggestions,
+    with viral potential scoring and timing recommendations.
+
+    Examples:
+
+        # Get trending topics for scary stories
+        faceless trending scary-stories
+
+        # Analyze a specific topic
+        faceless trending finance --analyze "Why Gen Z is broke"
+
+        # Get content calendar suggestions
+        faceless trending luxury --calendar
+
+        # Save full report
+        faceless trending finance -o trends.json
+    """
+    from faceless.services.trending_service import TrendingService
+
+    console.print(
+        Panel.fit(
+            f"[bold blue]Finding Trends for:[/] {niche.display_name}",
+            title="📈 Trending Topics",
+        )
+    )
+
+    try:
+        service = TrendingService()
+
+        # Analyze specific topic if requested
+        if analyze:
+            console.print(f"\n[bold]Analyzing:[/] {analyze}\n")
+
+            with console.status("[bold green]Analyzing topic potential..."):
+                topic = service.analyze_topic_potential(analyze, niche)
+
+            # Display analysis
+            table = Table(title="Topic Analysis")
+            table.add_column("Metric", style="cyan")
+            table.add_column("Value")
+
+            table.add_row("Score", f"{topic.score:.0f}/100")
+            table.add_row("Lifecycle", topic.lifecycle.value.title())
+            table.add_row("Video Potential", f"{topic.video_potential:.0%}")
+            table.add_row("Competition", topic.competition_level.title())
+            table.add_row("Evergreen Potential", f"{topic.evergreen_potential:.0%}")
+
+            console.print(table)
+
+            if topic.suggested_angles:
+                console.print("\n[bold]📐 Suggested Angles:[/]")
+                for angle in topic.suggested_angles:
+                    console.print(f"  → {angle}")
+
+            # Timing recommendation
+            timing = service.suggest_content_timing(topic)
+            console.print(f"\n[bold]⏰ Timing:[/] {timing['recommendation']}")
+            console.print(f"   Window: {timing['window']}")
+
+            return
+
+        # Get full trend report
+        with console.status("[bold green]Discovering trends..."):
+            report = service.get_trend_report(niche, max_topics_per_source=count)
+
+        # Hot topics
+        if report.hot_topics:
+            console.print("\n[bold red]🔥 Hot Topics (Post Now!):[/]")
+            for topic in report.hot_topics[:5]:
+                score_color = (
+                    "green"
+                    if topic.score >= 80
+                    else "yellow" if topic.score >= 60 else "white"
+                )
+                console.print(f"  [{score_color}]{topic.score:.0f}[/] {topic.title}")
+
+        # Rising topics
+        if report.rising_topics:
+            console.print("\n[bold yellow]📈 Rising Topics:[/]")
+            for topic in report.rising_topics[:5]:
+                console.print(f"  ↑{topic.growth_rate:.0f}% {topic.title}")
+
+        # Viral potential
+        if report.viral_potential:
+            console.print("\n[bold magenta]🚀 High Viral Potential:[/]")
+            for topic in report.viral_potential[:3]:
+                console.print(f"  {topic.video_potential:.0%} {topic.title}")
+
+        # Evergreen topics
+        if report.evergreen_topics:
+            console.print("\n[bold green]🌲 Evergreen Topics:[/]")
+            for topic in report.evergreen_topics[:3]:
+                console.print(f"  • {topic.title}")
+
+        # Top recommendation
+        if report.top_recommendation:
+            console.print(
+                f"\n[bold]⭐ Top Recommendation:[/] {report.top_recommendation.title}"
+            )
+
+        # Content calendar
+        if calendar and report.content_calendar_suggestions:
+            console.print("\n[bold]📅 Content Calendar:[/]")
+            for item in report.content_calendar_suggestions:
+                console.print(f"  [{item['timing']}] {item['topic']}")
+                console.print(f"    [dim]{item['reason']}[/]")
+
+        # Save report if requested
+        if output:
+            output.write_text(json.dumps(report.to_dict(), indent=2, default=str))
+            console.print(f"\n[green]✓ Saved report to {output}[/]")
+
+    except Exception as e:
+        console.print(f"\n[red]✗ Trend discovery failed: {e}[/]")
+        raise typer.Exit(1) from None
 
 
 if __name__ == "__main__":

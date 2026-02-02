@@ -9,7 +9,7 @@ AI-powered content production pipeline for creating "faceless" videos with AI-ge
 
 ## ✨ Features
 
-- **Multi-Niche Support**: Scary stories, finance, and luxury content niches
+- **Multi-Niche Support**: 23 content niches including scary stories, finance, luxury, true crime, psychology, and more
 - **AI Image Generation**: Azure OpenAI (GPT-Image-1/DALL-E) for scene illustrations
 - **Text-to-Speech**: Azure OpenAI TTS or ElevenLabs for narration
 - **Automated Video Assembly**: FFmpeg-based video production
@@ -17,6 +17,9 @@ AI-powered content production pipeline for creating "faceless" videos with AI-ge
 - **Smart Checkpointing**: Resume interrupted jobs automatically
 - **Thumbnail Generation**: A/B testing variants for CTR optimization
 - **Subtitle Generation**: SRT/VTT formats with optional burn-in
+- **Deep Research**: AI-powered topic research with configurable depth levels
+- **Quality Scoring**: Hook analysis, retention prediction, and quality gates
+- **Trend Discovery**: Find trending topics from Reddit with viral potential scoring
 
 ## 🚀 Quick Start
 
@@ -169,6 +172,7 @@ pre-commit install
 - [Setup Guide](documentation/SETUP_GUIDE.md)
 - [Pipeline Reference](documentation/PIPELINE_README.md)
 - [Future Improvements](documentation/FUTURE_IMPROVEMENTS.md)
+- [Improvement Suggestions](documentation/SUGGESTIONS.md)
 
 ## 🔧 CLI Reference
 
@@ -180,6 +184,9 @@ Commands:
   validate   Validate configuration and API connections
   init       Initialize project directories
   info       Show pipeline configuration information
+  research   Research a topic for content creation
+  quality    Evaluate script quality before production
+  trending   Discover trending topics for a niche
 ```
 
 ### Generate Command
@@ -188,7 +195,7 @@ Commands:
 Usage: faceless generate NICHE [OPTIONS]
 
 Arguments:
-  NICHE  Content niche (scary-stories, finance, luxury)
+  NICHE  Content niche (scary-stories, finance, luxury, etc.)
 
 Options:
   -c, --count INTEGER       Number of videos to generate [default: 1]
@@ -199,6 +206,68 @@ Options:
   -t, --thumbnails          Generate thumbnail variants [default: True]
   --subtitles               Generate subtitle files [default: True]
   -m, --music PATH          Path to background music file
+```
+
+### Research Command
+
+```
+Usage: faceless research TOPIC [OPTIONS]
+
+Research a topic for content creation with AI-powered deep research.
+
+Arguments:
+  TOPIC  Topic to research
+
+Options:
+  -n, --niche NICHE         Content niche for context [default: finance]
+  -d, --depth TEXT          Research depth: quick, standard, deep, investigative
+  -s, --structure           Generate content structure recommendation
+  -o, --output PATH         Save research to JSON file
+
+Examples:
+  faceless research "Why diamonds are expensive" -n finance -d deep
+  faceless research "Scary hotel stories" -n scary-stories -o research.json
+```
+
+### Quality Command
+
+```
+Usage: faceless quality SCRIPT_PATH [OPTIONS]
+
+Evaluate script quality before production.
+
+Arguments:
+  SCRIPT_PATH  Path to script JSON file
+
+Options:
+  --strict                  Require all quality gates to pass
+  -i, --improve-hooks       Generate improved hook alternatives
+  -o, --output PATH         Save quality report to JSON file
+
+Examples:
+  faceless quality scripts/my-script.json --strict
+  faceless quality scripts/my-script.json --improve-hooks -o report.json
+```
+
+### Trending Command
+
+```
+Usage: faceless trending NICHE [OPTIONS]
+
+Discover trending topics for a niche.
+
+Arguments:
+  NICHE  Content niche to get trends for
+
+Options:
+  -c, --count INTEGER       Number of topics to show [default: 10]
+  -a, --analyze TOPIC       Analyze a specific topic's potential
+  --calendar                Show content calendar suggestions
+  -o, --output PATH         Save trend report to JSON file
+
+Examples:
+  faceless trending scary-stories --calendar
+  faceless trending finance --analyze "Why Gen Z is broke"
 ```
 
 ## 🤝 Contributing
