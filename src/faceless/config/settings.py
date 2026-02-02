@@ -347,6 +347,40 @@ class Settings(BaseSettings):
         le=600,
         description="Request timeout in seconds",
     )
+    image_generation_timeout: int = Field(
+        default=120,
+        ge=10,
+        le=600,
+        description="Timeout for image generation requests (seconds)",
+    )
+    tts_generation_timeout: int = Field(
+        default=180,
+        ge=10,
+        le=600,
+        description="Timeout for TTS generation requests (seconds)",
+    )
+    scraper_timeout: int = Field(
+        default=30,
+        ge=5,
+        le=120,
+        description="Timeout for web scraping requests (seconds)",
+    )
+
+    # Content generation settings
+    words_per_scene: int = Field(
+        default=150,
+        ge=50,
+        le=500,
+        description="Target words per scene when splitting content",
+    )
+
+    # Video effect settings
+    ken_burns_scale_factor: float = Field(
+        default=1.15,
+        ge=1.0,
+        le=2.0,
+        description="Scale factor for Ken Burns effect (zoom/pan)",
+    )
     enable_retry: bool = Field(
         default=True,
         description="Enable automatic retry on failure",
