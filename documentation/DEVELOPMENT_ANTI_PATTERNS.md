@@ -6,160 +6,14 @@ This document identifies development anti-patterns found in the faceless-content
 
 ## Table of Contents
 
-1. [AP-001: Duplicated Architecture (Legacy Pipeline vs Modern src/)](#ap-001-duplicated-architecture-legacy-pipeline-vs-modern-src)
-2. [AP-002: sys.path Manipulation](#ap-002-syspath-manipulation)
-3. [AP-003: Mixed HTTP Client Libraries](#ap-003-mixed-http-client-libraries)
-4. [AP-004: Print Statements Instead of Structured Logging](#ap-004-print-statements-instead-of-structured-logging)
-5. [AP-005: Overly Broad Exception Handling](#ap-005-overly-broad-exception-handling)
-6. [AP-006: Mutable Default Arguments](#ap-006-mutable-default-arguments)
-7. [AP-007: Hardcoded Magic Numbers and Strings](#ap-007-hardcoded-magic-numbers-and-strings)
-8. [AP-008: Missing Type Hints in Legacy Code](#ap-008-missing-type-hints-in-legacy-code)
-9. [AP-009: Inconsistent Configuration Access Patterns](#ap-009-inconsistent-configuration-access-patterns)
-10. [AP-010: Global Module-Level Imports with Try/Except Fallbacks](#ap-010-global-module-level-imports-with-tryexcept-fallbacks)
-11. [AP-011: Code Duplication Between Pipeline and src/faceless](#ap-011-code-duplication-between-pipeline-and-srcfaceless)
-12. [AP-012: Missing Input Validation in Pipeline Modules](#ap-012-missing-input-validation-in-pipeline-modules)
-13. [AP-013: Subprocess Calls Without Proper Error Handling](#ap-013-subprocess-calls-without-proper-error-handling)
-14. [AP-014: Inconsistent File Encoding Handling](#ap-014-inconsistent-file-encoding-handling)
-15. [AP-015: Optional Dependencies Not Declared](#ap-015-optional-dependencies-not-declared)
-
----
-
-## AP-001: Duplicated Architecture (Legacy Pipeline vs Modern src/) ✅ FULLY RESOLVED
-
-### Status: FULLY RESOLVED
-**Resolution Date:** 2026-02-02
-
-### Description
-The repository previously contained two parallel implementations:
-- **Legacy**: `pipeline/` directory with standalone modules
-- **Modern**: `src/faceless/` directory with properly structured package
-
-This created maintenance burden, confusion about which code to use, and potential inconsistencies between implementations.
-
-### Resolution Applied
-**The `pipeline/` directory has been completely removed.** All modules have been migrated to the modern `src/faceless/` structure:
-
-**Core modules migrated to `src/faceless/core/`:**
-- `hooks.py` - TikTok engagement hooks and retention strategies
-- `hashtags.py` - Hashtag ladder system for content discovery
-- `tiktok_formats.py` - Content format definitions
-- `posting_schedule.py` - Optimal posting time strategies
-- `text_overlay.py` - Text overlay models for video
-
-**Service modules migrated to `src/faceless/services/`:**
-- `metadata_service.py` (from `content_metadata.py`) - Posting metadata generation
-- `subtitle_service.py` (from `subtitle_generator.py`) - SRT/VTT subtitle generation
-- `thumbnail_service.py` (from `thumbnail_generator.py`) - Thumbnail generation
-- `scraper_service.py` (from `story_scraper.py`) - Content fetching from sources
-
-**Import paths updated:**
-```python
-# Old (no longer works)
-from hooks import get_first_frame_hook
-from hashtags import generate_hashtag_set
-
-# New
-from faceless.core.hooks import get_first_frame_hook
-from faceless.core.hashtags import generate_hashtag_set
-from faceless.services.metadata_service import generate_content_metadata
-```
-
-### Impact
-- ✅ Single source of truth for all code
-- ✅ Consistent import patterns (`faceless.core.*`, `faceless.services.*`)
-- ✅ All 648 tests pass
-- ✅ 78% code coverage maintained
-
----
-
-## AP-002: sys.path Manipulation ✅ RESOLVED
-
-### Status: RESOLVED
-**Resolution Date:** 2026-02-02
-
-### Description
-Multiple files previously manipulated `sys.path` at import time to enable cross-directory imports. This pattern was fragile and:
-- Broke when files were moved
-- Created import order dependencies
-- Made the codebase harder to package properly
-
-### Resolution Applied
-With the removal of the `pipeline/` directory, all `sys.path` manipulations in production code have been eliminated. The test files that previously used `sys.path.insert()` now use proper imports from the `faceless` package:
-
-```python
-# Old (test files)
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "pipeline"))
-from hooks import get_first_frame_hook
-
-# New (test files)
-from faceless.core.hooks import get_first_frame_hook
-```
-
-All code now uses proper Python packaging via `pyproject.toml` and `pip install -e .`
-
----
-
-## AP-003: Mixed HTTP Client Libraries ✅ RESOLVED
-
-### Status: RESOLVED
-**Resolution Date:** 2026-02-02
-
-### Description
-The codebase previously used two different HTTP client libraries:
-- **Modern code**: Uses `httpx` (in `src/faceless/clients/`)
-- **Legacy code**: Uses `requests` (in `pipeline/`)
-
-### Resolution Applied
-With the removal of `pipeline/`, all code now consistently uses `httpx`. The migrated services (`thumbnail_service.py`, `scraper_service.py`) use `httpx` for HTTP requests.
-
----
-
-### Locations
-Using `requests`:
-- `pipeline/image_generator.py`
-- `pipeline/script_enhancer.py`
-- `pipeline/story_scraper.py`
-- `pipeline/test_apis.py`
-- `pipeline/thumbnail_generator.py`
-- `pipeline/tts_generator.py`
-
-Using `httpx`:
-- `src/faceless/clients/base.py`
-- `src/faceless/clients/azure_openai.py`
-
-### Impact
-- **Medium**: Inconsistent error handling
-- **Medium**: Different timeout/retry behavior
-- **Low**: Increased dependency footprint
-
-### Evidence
-```python
-# pipeline/image_generator.py (legacy - uses requests)
-import requests
-response = requests.post(url, headers=headers, json=payload, timeout=120)
-
-# src/faceless/clients/base.py (modern - uses httpx)
-import httpx
-response = self._client.request(method, path, **kwargs)
-```
-
-### Resolution
-1. Standardize on `httpx` across the entire codebase
-2. Migrate all `pipeline/` modules to use the `BaseHTTPClient` from `src/faceless/clients/base.py`
-3. Remove `requests` from dependencies if no longer needed
-
----
-
-## AP-004: Print Statements Instead of Structured Logging ✅ RESOLVED
-
-### Status: RESOLVED
-**Resolution Date:** 2026-02-02
-
-### Description
-The `pipeline/` directory previously used `print()` statements extensively for output instead of using the structured logging system available in `src/faceless/utils/logging.py`.
-
-### Resolution Applied
-With the complete removal of the `pipeline/` directory, this anti-pattern no longer exists. All code in `src/faceless/` uses structured logging from `faceless.utils.logging`.
+1. [AP-005: Overly Broad Exception Handling](#ap-005-overly-broad-exception-handling)
+2. [AP-006: Mutable Default Arguments](#ap-006-mutable-default-arguments)
+3. [AP-008: Missing Type Hints in Legacy Code](#ap-008-missing-type-hints-in-legacy-code)
+4. [AP-009: Inconsistent Configuration Access Patterns](#ap-009-inconsistent-configuration-access-patterns)
+5. [AP-012: Missing Input Validation in Pipeline Modules](#ap-012-missing-input-validation-in-pipeline-modules)
+6. [AP-013: Subprocess Calls Without Proper Error Handling](#ap-013-subprocess-calls-without-proper-error-handling)
+7. [AP-014: Inconsistent File Encoding Handling](#ap-014-inconsistent-file-encoding-handling)
+8. [AP-015: Optional Dependencies Not Declared](#ap-015-optional-dependencies-not-declared)
 
 ---
 
@@ -251,48 +105,6 @@ None needed - the current implementation correctly uses `None` defaults and crea
 
 ---
 
-## AP-007: Hardcoded Magic Numbers and Strings ✅ RESOLVED
-
-### Description
-Various magic numbers and strings are hardcoded throughout the codebase instead of being defined as named constants or configuration values.
-
-### Resolution Status: COMPLETE
-
-Magic numbers have been extracted to configurable settings in `src/faceless/config/settings.py` and `.env.example`:
-
-| Original Location | Hardcoded Value | Setting Name |
-|------------------|-----------------|--------------|
-| `pipeline/image_generator.py:84` | `timeout=120` | `IMAGE_GENERATION_TIMEOUT` |
-| `pipeline/tts_generator.py:74,149` | `timeout=180` | `TTS_GENERATION_TIMEOUT` |
-| `pipeline/story_scraper.py:69` | `timeout=30` | `SCRAPER_TIMEOUT` |
-| `pipeline/story_scraper.py:161` | `words_per_scene=150` | `WORDS_PER_SCENE` |
-| `pipeline/video_assembler.py:106` | `scale_factor=1.15` | `KEN_BURNS_SCALE_FACTOR` |
-
-### Usage
-
-Access via Settings:
-```python
-from faceless.config import get_settings
-
-settings = get_settings()
-timeout = settings.image_generation_timeout  # 120
-tts_timeout = settings.tts_generation_timeout  # 180
-scraper_timeout = settings.scraper_timeout  # 30
-words = settings.words_per_scene  # 150
-scale = settings.ken_burns_scale_factor  # 1.15
-```
-
-Configure via `.env`:
-```bash
-IMAGE_GENERATION_TIMEOUT=120
-TTS_GENERATION_TIMEOUT=180
-SCRAPER_TIMEOUT=30
-WORDS_PER_SCENE=150
-KEN_BURNS_SCALE_FACTOR=1.15
-```
-
----
-
 ## AP-008: Missing Type Hints in Legacy Code
 
 ### Description
@@ -376,36 +188,6 @@ endpoint = settings.azure_openai.endpoint
 2. Deprecate uppercase constant exports in `env_config.py`
 3. Update all `pipeline/` modules to use settings object
 4. Add deprecation warnings to legacy access patterns
-
----
-
-## AP-010: Global Module-Level Imports with Try/Except Fallbacks ✅ RESOLVED
-
-### Status: RESOLVED
-**Resolution Date:** 2026-02-02
-
-### Description
-Several modules previously used try/except at module level to handle optional imports.
-
-### Resolution Applied
-With the removal of the `pipeline/` directory, this anti-pattern no longer exists. All imports in `src/faceless/` are explicit and properly declared in `pyproject.toml`.
-
----
-
-## AP-011: Code Duplication Between Pipeline and src/faceless ✅ RESOLVED
-
-### Status: RESOLVED
-**Resolution Date:** 2026-02-02
-
-### Description
-Similar functionality was previously implemented twice with slight differences in `pipeline/` and `src/faceless/`.
-
-### Resolution Applied
-The `pipeline/` directory has been completely removed. All code now lives in `src/faceless/`:
-- `src/faceless/services/` - All business logic services
-- `src/faceless/core/` - All data models, enums, and engagement modules
-
-There is now a single source of truth for all functionality.
 
 ---
 
@@ -545,16 +327,10 @@ Some modules import packages that aren't listed in `pyproject.toml` dependencies
 
 | Priority | Anti-Pattern | Status |
 |----------|-------------|--------|
-| ✅ Resolved | AP-001: Duplicated Architecture | FULLY RESOLVED - pipeline/ removed |
-| ✅ Resolved | AP-002: sys.path Manipulation | RESOLVED - no more sys.path hacks |
-| ✅ Resolved | AP-003: Mixed HTTP Libraries | RESOLVED - all code uses httpx |
-| ✅ Resolved | AP-004: Print Statements | RESOLVED - structured logging |
 | 🟡 Medium | AP-005: Broad Exception Handling | Remaining in some services |
-| ✅ Resolved | AP-007: Magic Numbers | RESOLVED - extracted to settings |
+| 🟢 Low | AP-006: Mutable Default Arguments | Already correct pattern |
 | 🟡 Medium | AP-008: Missing Type Hints | All new code has type hints |
 | 🟡 Medium | AP-009: Config Access Patterns | Modern code uses get_settings() |
-| ✅ Resolved | AP-010: Optional Import Fallbacks | RESOLVED - no more try/except imports |
-| ✅ Resolved | AP-011: Code Duplication | FULLY RESOLVED - single source of truth |
 | 🟡 Medium | AP-012: Missing Validation | Some services need validation |
 | 🟡 Medium | AP-013: Subprocess Errors | Some subprocess calls need better handling |
 | 🟢 Low | AP-014: File Encoding | Most code specifies encoding |
@@ -570,10 +346,3 @@ The following anti-patterns still need attention:
 2. **AP-008: Missing Type Hints** - Legacy services may need type hint additions
 3. **AP-012: Missing Validation** - Some service functions lack input validation
 4. **AP-013: Subprocess Errors** - FFmpeg calls could have better error handling
-
-## Completed Phases
-
-- ~~**Phase 3 - Architecture Consolidation**~~ ✅ COMPLETED
-  - ✅ AP-001/AP-011: Consolidated pipeline/ into src/faceless/
-  - ✅ AP-002: Removed all sys.path manipulation
-  - ✅ AP-003: Standardized on httpx
