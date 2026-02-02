@@ -118,7 +118,7 @@ def create_subtitles_from_script(
     base_name = script_path.stem
     if output_dir is None:
         settings = get_settings()
-        output_dir = settings.output.base_dir / niche / "audio"
+        output_dir = settings.output_base_dir / niche / "audio"
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -336,7 +336,7 @@ def generate_animated_captions(
     base_name = script_path.stem
     if output_dir is None:
         settings = get_settings()
-        output_dir = settings.output.base_dir / niche / "audio"
+        output_dir = settings.output_base_dir / niche / "audio"
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"{base_name}_captions.json"

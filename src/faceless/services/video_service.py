@@ -193,7 +193,7 @@ class VideoService(LoggerMixin):
             filter_complex = (
                 f"[0:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
                 f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
-                f"zoompan=z='min(zoom+0.0005,1.05)':d={int(duration*25)}:s={width}x{height}:fps=25"
+                f"zoompan=z='min(zoom+0.0005,1.05)':d={int(duration * 25)}:s={width}x{height}:fps=25"
                 f"[v]"
             )
         else:
@@ -458,7 +458,7 @@ class VideoService(LoggerMixin):
                         filter_complex = (
                             f"[0:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
                             f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
-                            f"zoompan=z='min(zoom+0.0005,1.05)':d={int(duration*25)}:s={width}x{height}:fps=25"
+                            f"zoompan=z='min(zoom+0.0005,1.05)':d={int(duration * 25)}:s={width}x{height}:fps=25"
                             f"[v]"
                         )
                     else:

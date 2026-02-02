@@ -513,7 +513,7 @@ Return JSON array:
         """Get trending topics from Reddit (AI-simulated)."""
         subreddits = NICHE_SUBREDDITS.get(niche, [])[:3]  # Top 3 subreddits
 
-        prompt = f"""Identify the top {max_topics} trending topics from these {niche.display_name} subreddits: {', '.join(subreddits)}
+        prompt = f"""Identify the top {max_topics} trending topics from these {niche.display_name} subreddits: {", ".join(subreddits)}
 
 Consider:
 - What's currently getting high engagement

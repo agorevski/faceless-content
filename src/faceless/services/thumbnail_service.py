@@ -132,7 +132,8 @@ def generate_thumbnail_prompt(
     concept_desc = THUMBNAIL_CONCEPTS.get(concept, THUMBNAIL_CONCEPTS["reveal"])
 
     # Build the prompt
-    prompt = template["prompt_template"].format(subject=subject)
+    prompt_template: str = str(template["prompt_template"])
+    prompt = prompt_template.format(subject=subject)
     prompt += f", {concept_desc}"
     prompt += f", {template['style']}"
 
@@ -170,7 +171,7 @@ def generate_thumbnail(
     settings = get_settings()
 
     if output_dir is None:
-        output_dir = settings.output.base_dir / niche / "images" / "thumbnails"
+        output_dir = settings.output_base_dir / niche / "images" / "thumbnails"
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"{output_name}.png"

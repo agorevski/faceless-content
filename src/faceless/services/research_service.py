@@ -331,7 +331,7 @@ Return as a JSON array of strings."""
         """
         prompt = f"""Verify these facts about "{topic}":
 
-{chr(10).join(f'{i+1}. {fact}' for i, fact in enumerate(facts))}
+{chr(10).join(f"{i + 1}. {fact}" for i, fact in enumerate(facts))}
 
 For each fact, provide:
 - verified: true/false/uncertain
@@ -451,7 +451,7 @@ Research Depth: {depth.value}
 
 Niche-Specific Focus: {context}
 
-{f'Additional Context: {additional_context}' if additional_context else ''}
+{f"Additional Context: {additional_context}" if additional_context else ""}
 
 Provide your research as JSON with this structure:
 {{

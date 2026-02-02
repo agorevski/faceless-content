@@ -493,7 +493,7 @@ class TestAzureOpenAIClientErrorPaths:
         # Error handler raises AzureOpenAIError which is wrapped in ImageGenerationError
         with pytest.raises(ImageGenerationError) as exc_info:
             client.generate_image("A bad prompt")
-        
+
         assert "Bad prompt" in str(exc_info.value)
 
     def test_chat_error_response_calls_handler(

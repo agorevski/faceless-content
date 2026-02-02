@@ -224,7 +224,7 @@ Return a JSON object with:
         prompt = f"""Create a visual style for this {script.niche.value} video:
 
 Title: {script.title}
-First scene: {script.scenes[0].narration[:200] if script.scenes else 'N/A'}
+First scene: {script.scenes[0].narration[:200] if script.scenes else "N/A"}
 
 Return JSON with:
 {{

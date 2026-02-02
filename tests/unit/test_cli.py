@@ -442,7 +442,9 @@ class TestGenerateCommandPipeline:
             result = runner.invoke(app, ["generate", "luxury"])
 
             assert result.exit_code == 1
-            assert "Pipeline failed" in result.output or "failed" in result.output.lower()
+            assert (
+                "Pipeline failed" in result.output or "failed" in result.output.lower()
+            )
 
     def test_generate_pipeline_exception_debug_mode(
         self, mock_orchestrator_exception
@@ -474,7 +476,9 @@ class TestValidateTestConnections:
             patch("faceless.cli.commands.get_settings") as mock_settings,
             patch("faceless.cli.commands.setup_logging"),
             patch("subprocess.run") as mock_run,
-            patch("faceless.clients.azure_openai.AzureOpenAIClient") as mock_client_class,
+            patch(
+                "faceless.clients.azure_openai.AzureOpenAIClient"
+            ) as mock_client_class,
         ):
             settings = MagicMock()
             settings.log_level = "INFO"
@@ -499,7 +503,9 @@ class TestValidateTestConnections:
             patch("faceless.cli.commands.get_settings") as mock_settings,
             patch("faceless.cli.commands.setup_logging"),
             patch("subprocess.run") as mock_run,
-            patch("faceless.clients.azure_openai.AzureOpenAIClient") as mock_client_class,
+            patch(
+                "faceless.clients.azure_openai.AzureOpenAIClient"
+            ) as mock_client_class,
         ):
             settings = MagicMock()
             settings.log_level = "INFO"
@@ -516,7 +522,10 @@ class TestValidateTestConnections:
             result = runner.invoke(app, ["validate", "--test-connections"])
 
             assert result.exit_code == 0
-            assert "failed" in result.output.lower() or "Connection failed" in result.output
+            assert (
+                "failed" in result.output.lower()
+                or "Connection failed" in result.output
+            )
 
     def test_validate_test_connections_exception(self) -> None:
         """Test validate with exception during test connections."""
@@ -524,7 +533,9 @@ class TestValidateTestConnections:
             patch("faceless.cli.commands.get_settings") as mock_settings,
             patch("faceless.cli.commands.setup_logging"),
             patch("subprocess.run") as mock_run,
-            patch("faceless.clients.azure_openai.AzureOpenAIClient") as mock_client_class,
+            patch(
+                "faceless.clients.azure_openai.AzureOpenAIClient"
+            ) as mock_client_class,
         ):
             settings = MagicMock()
             settings.log_level = "INFO"
@@ -539,7 +550,9 @@ class TestValidateTestConnections:
             result = runner.invoke(app, ["validate", "--test-connections"])
 
             assert result.exit_code == 0
-            assert "error" in result.output.lower() or "Connection error" in result.output
+            assert (
+                "error" in result.output.lower() or "Connection error" in result.output
+            )
 
 
 class TestResearchCommand:
@@ -574,7 +587,9 @@ class TestResearchCommand:
             result_cli = runner.invoke(app, ["research", "Bitcoin history"])
 
             assert result_cli.exit_code == 0
-            assert "Research Complete" in result_cli.output or "85%" in result_cli.output
+            assert (
+                "Research Complete" in result_cli.output or "85%" in result_cli.output
+            )
 
     def test_research_with_depth(self) -> None:
         """Test research command with depth option."""
@@ -644,7 +659,9 @@ class TestResearchCommand:
             )
 
             assert result_cli.exit_code == 0
-            assert "Content Structure" in result_cli.output or "Hook" in result_cli.output
+            assert (
+                "Content Structure" in result_cli.output or "Hook" in result_cli.output
+            )
 
     def test_research_save_output(self, tmp_path: Path) -> None:
         """Test research command with output file."""
@@ -739,7 +756,9 @@ class TestQualityCommand:
             patch("faceless.cli.commands.get_settings") as mock_settings,
             patch("faceless.cli.commands.setup_logging"),
             patch("faceless.core.models.Script") as mock_script,
-            patch("faceless.services.quality_service.QualityService") as mock_service_class,
+            patch(
+                "faceless.services.quality_service.QualityService"
+            ) as mock_service_class,
         ):
             settings = MagicMock()
             settings.log_level = "INFO"
@@ -784,7 +803,9 @@ class TestQualityCommand:
             patch("faceless.cli.commands.get_settings") as mock_settings,
             patch("faceless.cli.commands.setup_logging"),
             patch("faceless.core.models.Script") as mock_script,
-            patch("faceless.services.quality_service.QualityService") as mock_service_class,
+            patch(
+                "faceless.services.quality_service.QualityService"
+            ) as mock_service_class,
         ):
             settings = MagicMock()
             settings.log_level = "INFO"
@@ -1014,9 +1035,7 @@ class TestTrendingCommand:
             mock_service_class.return_value = service
 
             output_file = tmp_path / "trends.json"
-            result = runner.invoke(
-                app, ["trending", "finance", "-o", str(output_file)]
-            )
+            result = runner.invoke(app, ["trending", "finance", "-o", str(output_file)])
 
             assert result.exit_code == 0
             assert output_file.exists()
@@ -1026,9 +1045,7 @@ class TestTrendingCommand:
         with (
             patch("faceless.cli.commands.get_settings") as mock_settings,
             patch("faceless.cli.commands.setup_logging"),
-            patch(
-                "faceless.services.trending_service.TrendingService"
-            ) as mock_service,
+            patch("faceless.services.trending_service.TrendingService") as mock_service,
         ):
             settings = MagicMock()
             settings.log_level = "INFO"
