@@ -24,7 +24,10 @@ This document identifies development anti-patterns found in the faceless-content
 
 ---
 
-## AP-001: Duplicated Architecture (Legacy Pipeline vs Modern src/)
+## AP-001: Duplicated Architecture (Legacy Pipeline vs Modern src/) ✅ RESOLVED
+
+### Status: RESOLVED
+**Resolution Date:** 2026-02-02
 
 ### Description
 The repository contains two parallel implementations:
@@ -45,9 +48,10 @@ This creates maintenance burden, confusion about which code to use, and potentia
 ### Evidence
 ```
 pipeline/
-├── image_generator.py      ← Legacy implementation
-├── tts_generator.py        ← Legacy implementation
-├── video_assembler.py      ← Legacy implementation
+├── image_generator.py      ← Now wraps ImageService
+├── tts_generator.py        ← Now wraps TTSService
+├── video_assembler.py      ← Now wraps VideoService
+├── script_enhancer.py      ← Now wraps EnhancerService
 └── ...
 
 src/faceless/
@@ -58,11 +62,23 @@ src/faceless/
 └── ...
 ```
 
-### Resolution
-1. Migrate all functionality from `pipeline/` to `src/faceless/`
-2. Create thin wrappers in `pipeline/` that delegate to `src/faceless/` for backward compatibility
-3. Deprecate and eventually remove the `pipeline/` directory
-4. Update documentation to reference only `src/faceless/`
+### Resolution Applied
+1. ✅ Created thin wrappers in `pipeline/` that delegate to `src/faceless/` services
+2. ✅ Added deprecation warnings to all legacy pipeline modules
+3. ✅ Maintained backward compatibility for existing scripts
+4. ✅ Files with modern equivalents now delegate to services:
+   - `image_generator.py` → `ImageService`
+   - `tts_generator.py` → `TTSService`
+   - `video_assembler.py` → `VideoService`
+   - `script_enhancer.py` → `EnhancerService`
+5. ✅ Files without modern equivalents marked for future migration:
+   - `subtitle_generator.py`, `thumbnail_generator.py`, `hooks.py`
+   - `hashtags.py`, `content_metadata.py`, `posting_schedule.py`
+   - `tiktok_formats.py`, `text_overlay.py`, `story_scraper.py`
+
+### Future Work
+- Eventually remove the `pipeline/` directory once all callers have migrated
+- Complete migration of remaining legacy-only features to services
 
 ---
 
@@ -165,44 +181,31 @@ response = self._client.request(method, path, **kwargs)
 
 ## AP-004: Print Statements Instead of Structured Logging
 
+> **✅ RESOLVED** - All print statements in `pipeline/` have been replaced with structured logging using `faceless.utils.logging`.
+
 ### Description
-The `pipeline/` directory uses `print()` statements extensively for output instead of using the structured logging system available in `src/faceless/utils/logging.py`.
+The `pipeline/` directory previously used `print()` statements extensively for output instead of using the structured logging system available in `src/faceless/utils/logging.py`.
 
-### Locations
-The `pipeline/` directory has **~230+ print statements** spread across 17 files:
-- `pipeline/pipeline.py`: 54 print statements
-- `pipeline/env_config.py`: 24 print statements
-- `pipeline/script_enhancer.py`: 22 print statements
-- `pipeline/video_assembler.py`: 20 print statements
-- (and many more)
+### Resolution Applied
+All 17 files in `pipeline/` now use structured logging:
+1. Each file imports `from faceless.utils.logging import get_logger`
+2. Module-level logger: `logger = get_logger(__name__)`
+3. All `print()` calls replaced with `logger.info()`, `logger.warning()`, `logger.error()`, or `logger.debug()`
+4. F-strings converted to structured key-value pairs for machine-parseable output
 
-### Impact
-- **High**: No log levels (can't filter warnings from info)
-- **High**: No structured metadata for log aggregation
-- **Medium**: No file logging support
-- **Medium**: Inconsistent output formatting
-
-### Evidence
+### Example (After Fix)
 ```python
-# pipeline/pipeline.py
-print(f"\n{'='*60}")
-print("🎬 FACELESS CONTENT PIPELINE")
-print(f"   Niche: {niche}")
-# ... many more print statements
+# pipeline/pipeline.py (now uses structured logging)
+from faceless.utils.logging import get_logger, setup_logging
 
-# Compare to src/faceless/services/video_service.py (proper logging)
-self.logger.info(
-    "Created scene video",
-    scene_number=scene.scene_number,
-    output=str(output_path),
-)
+logger = get_logger(__name__)
+
+def full_pipeline(niche: str, ...):
+    setup_logging()
+    logger.info("Starting pipeline", niche=niche, story_count=story_count)
+    # ...
+    logger.error("Enhancement failed", script=sp, error=str(e))
 ```
-
-### Resolution
-1. Import and use `LoggerMixin` from `faceless.utils.logging` in all pipeline modules
-2. Replace all `print()` calls with appropriate `self.logger.info()`, `self.logger.error()`, etc.
-3. Use structured logging with key-value pairs for machine-parseable output
-4. Consider using `rich` console for CLI output that needs formatting
 
 ---
 
@@ -294,47 +297,45 @@ None needed - the current implementation correctly uses `None` defaults and crea
 
 ---
 
-## AP-007: Hardcoded Magic Numbers and Strings
+## AP-007: Hardcoded Magic Numbers and Strings ✅ RESOLVED
 
 ### Description
 Various magic numbers and strings are hardcoded throughout the codebase instead of being defined as named constants or configuration values.
 
-### Locations
-- `pipeline/image_generator.py:84`: `timeout=120`
-- `pipeline/tts_generator.py:74`: `timeout=180`
-- `pipeline/tts_generator.py:149`: `timeout=120`
-- `pipeline/story_scraper.py:69`: `timeout=30`
-- `pipeline/story_scraper.py:161`: `words_per_scene: int = 150`
-- `pipeline/video_assembler.py:106`: `scale_factor = 1.15`
-- `pipeline/video_assembler.py:157`: Various FFmpeg parameters
+### Resolution Status: COMPLETE
 
-### Impact
-- **Medium**: Difficult to tune behavior without code changes
-- **Medium**: Same values repeated in multiple places
-- **Low**: No documentation of what values mean
+Magic numbers have been extracted to configurable settings in `src/faceless/config/settings.py` and `.env.example`:
 
-### Evidence
+| Original Location | Hardcoded Value | Setting Name |
+|------------------|-----------------|--------------|
+| `pipeline/image_generator.py:84` | `timeout=120` | `IMAGE_GENERATION_TIMEOUT` |
+| `pipeline/tts_generator.py:74,149` | `timeout=180` | `TTS_GENERATION_TIMEOUT` |
+| `pipeline/story_scraper.py:69` | `timeout=30` | `SCRAPER_TIMEOUT` |
+| `pipeline/story_scraper.py:161` | `words_per_scene=150` | `WORDS_PER_SCENE` |
+| `pipeline/video_assembler.py:106` | `scale_factor=1.15` | `KEN_BURNS_SCALE_FACTOR` |
+
+### Usage
+
+Access via Settings:
 ```python
-# pipeline/image_generator.py
-response = requests.post(url, headers=headers, json=payload, timeout=120)
+from faceless.config import get_settings
 
-# pipeline/tts_generator.py
-response = requests.post(url, headers=headers, json=payload, timeout=180)
+settings = get_settings()
+timeout = settings.image_generation_timeout  # 120
+tts_timeout = settings.tts_generation_timeout  # 180
+scraper_timeout = settings.scraper_timeout  # 30
+words = settings.words_per_scene  # 150
+scale = settings.ken_burns_scale_factor  # 1.15
 ```
 
-### Resolution
-1. Define timeout constants in settings:
-   ```python
-   # In Settings class
-   image_generation_timeout: int = Field(default=120)
-   tts_generation_timeout: int = Field(default=180)
-   ```
-2. Create a constants module for algorithm-specific values:
-   ```python
-   # constants.py
-   TTS_WORDS_PER_MINUTE = 150
-   KEN_BURNS_SCALE_FACTOR = 1.15
-   ```
+Configure via `.env`:
+```bash
+IMAGE_GENERATION_TIMEOUT=120
+TTS_GENERATION_TIMEOUT=180
+SCRAPER_TIMEOUT=30
+WORDS_PER_SCENE=150
+KEN_BURNS_SCALE_FACTOR=1.15
+```
 
 ---
 
@@ -626,12 +627,12 @@ Some modules import packages that aren't listed in `pyproject.toml` dependencies
 | Priority | Anti-Pattern | Effort | Impact |
 |----------|-------------|--------|--------|
 | 🔴 Critical | AP-001: Duplicated Architecture | High | High |
-| 🔴 Critical | AP-004: Print Statements | Medium | High |
+| ✅ Resolved | AP-004: Print Statements | Medium | High |
 | 🔴 Critical | AP-005: Broad Exception Handling | Medium | High |
 | 🟠 High | AP-002: sys.path Manipulation | Medium | Medium |
 | 🟠 High | AP-003: Mixed HTTP Libraries | Medium | Medium |
 | 🟠 High | AP-011: Code Duplication | High | High |
-| 🟡 Medium | AP-007: Magic Numbers | Low | Medium |
+| 🟢 Resolved | AP-007: Magic Numbers | Low | Medium |
 | 🟡 Medium | AP-008: Missing Type Hints | Medium | Medium |
 | 🟡 Medium | AP-009: Config Access Patterns | Medium | Medium |
 | 🟡 Medium | AP-012: Missing Validation | Medium | Medium |
@@ -650,7 +651,7 @@ Some modules import packages that aren't listed in `pyproject.toml` dependencies
    - AP-014: Ensure consistent encoding
 
 2. **Phase 2 - Logging & Error Handling** (1 week)
-   - AP-004: Replace print statements with structured logging
+   - ~~AP-004: Replace print statements with structured logging~~ ✅ COMPLETED
    - AP-013: Add proper subprocess error handling
 
 3. **Phase 3 - Architecture Consolidation** (2-4 weeks)
