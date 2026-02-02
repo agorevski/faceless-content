@@ -1000,5 +1000,234 @@ def trending(
         raise typer.Exit(1) from None
 
 
+# =============================================================================
+# Scrape Command (New multi-source content fetching)
+# =============================================================================
+
+
+@app.command()
+def scrape(
+    niche: NicheArg,
+    count: Annotated[
+        int,
+        typer.Option(
+            "--count",
+            "-c",
+            help="Number of content items to fetch",
+            min=1,
+            max=50,
+        ),
+    ] = 10,
+    sources: Annotated[
+        str | None,
+        typer.Option(
+            "--sources",
+            "-s",
+            help="Comma-separated sources (reddit,wikipedia,hackernews,news,youtube,openlibrary)",
+        ),
+    ] = None,
+    query: Annotated[
+        str | None,
+        typer.Option(
+            "--query",
+            "-q",
+            help="Search query to filter content",
+        ),
+    ] = None,
+    trending: Annotated[
+        bool,
+        typer.Option(
+            "--trending",
+            "-t",
+            help="Fetch trending content instead of top content",
+        ),
+    ] = False,
+    save: Annotated[
+        bool,
+        typer.Option(
+            "--save",
+            help="Save content as script files",
+        ),
+    ] = False,
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Output file for JSON results",
+        ),
+    ] = None,
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose",
+            "-v",
+            help="Show detailed content",
+        ),
+    ] = False,
+) -> None:
+    """
+    Fetch content from multiple sources for a niche.
+
+    Uses the new ContentSourceService to fetch from Reddit, Wikipedia,
+    Hacker News, OpenLibrary, YouTube, and News APIs.
+
+    Examples:
+
+        # Fetch 10 scary stories from all available sources
+        faceless scrape scary-stories
+
+        # Fetch from specific sources only
+        faceless scrape tech-gadgets --sources reddit,hackernews
+
+        # Search for specific content
+        faceless scrape history --query "ancient rome" -c 5
+
+        # Fetch trending content and save as scripts
+        faceless scrape ai-future-tech --trending --save
+
+        # Save raw content to JSON file
+        faceless scrape finance -c 20 -o finance_content.json
+    """
+    import asyncio
+
+    from faceless.core.enums import ContentSourceType
+    from faceless.services.content_source_service import ContentSourceService
+
+    console.print(
+        Panel.fit(
+            f"[bold blue]Fetching {count} {niche.display_name} content items[/]",
+            title="🔍 Content Scraper",
+        )
+    )
+
+    # Parse sources if provided
+    source_types: list[ContentSourceType] | None = None
+    if sources:
+        source_map = {
+            "reddit": ContentSourceType.REDDIT,
+            "wikipedia": ContentSourceType.WIKIPEDIA,
+            "hackernews": ContentSourceType.HACKER_NEWS,
+            "hacker_news": ContentSourceType.HACKER_NEWS,
+            "news": ContentSourceType.NEWS,
+            "youtube": ContentSourceType.YOUTUBE,
+            "openlibrary": ContentSourceType.OPEN_LIBRARY,
+            "open_library": ContentSourceType.OPEN_LIBRARY,
+        }
+        source_types = []
+        for s in sources.lower().split(","):
+            s = s.strip()
+            if s in source_map:
+                source_types.append(source_map[s])
+            else:
+                console.print(f"[yellow]⚠ Unknown source: {s}[/]")
+
+    try:
+        service = ContentSourceService()
+
+        # Show available sources
+        available = service.get_available_sources()
+        console.print(
+            f"\n[dim]Available sources: {', '.join(s.value for s in available)}[/]"
+        )
+
+        # Show sources for this niche
+        niche_sources = service.get_sources_for_niche(niche)
+        console.print(
+            f"[dim]Sources for {niche.value}: {', '.join(s.value for s in niche_sources)}[/]\n"
+        )
+
+        # Fetch content
+        with console.status("[bold blue]Fetching content..."):
+            if trending:
+                content = asyncio.run(
+                    service.fetch_trending(niche, limit=count, sources=source_types)
+                )
+            elif query:
+                content = asyncio.run(
+                    service.search(
+                        query, niche=niche, limit=count, sources=source_types
+                    )
+                )
+            else:
+                content = asyncio.run(
+                    service.fetch_content(
+                        niche, query=query, limit=count, sources=source_types
+                    )
+                )
+
+        if not content:
+            console.print("[yellow]No content found.[/]")
+            raise typer.Exit(1)
+
+        console.print(f"[green]✓ Found {len(content)} content items[/]\n")
+
+        # Display results
+        table = Table(title=f"{niche.display_name} Content")
+        table.add_column("#", style="dim", width=3)
+        table.add_column("Source", style="cyan", width=12)
+        table.add_column("Title", width=50)
+        table.add_column("Score", justify="right", width=6)
+        table.add_column("Words", justify="right", width=6)
+
+        for i, item in enumerate(content, 1):
+            title = item.title[:47] + "..." if len(item.title) > 50 else item.title
+            table.add_row(
+                str(i),
+                item.source_type.value,
+                title,
+                f"{item.score:.0f}",
+                str(item.word_count),
+            )
+
+        console.print(table)
+
+        # Show verbose details if requested
+        if verbose:
+            console.print("\n[bold]Content Details:[/]")
+            for i, item in enumerate(content, 1):
+                console.print(f"\n[bold cyan]{i}. {item.title}[/]")
+                console.print(
+                    f"   [dim]Source: {item.source_type.value} | {item.source_url}[/]"
+                )
+                if item.author:
+                    console.print(f"   [dim]Author: {item.author}[/]")
+                preview = (
+                    item.content[:200] + "..."
+                    if len(item.content) > 200
+                    else item.content
+                )
+                console.print(f"   {preview}")
+
+        # Save as scripts if requested
+        if save:
+            console.print("\n[bold]Saving as scripts...[/]")
+            saved_count = 0
+            for item in content:
+                try:
+                    path = asyncio.run(service.save_content_as_script(item, niche))
+                    console.print(f"  [green]✓[/] {path.name}")
+                    saved_count += 1
+                except Exception as e:
+                    console.print(f"  [red]✗[/] Failed to save: {e}")
+            console.print(f"\n[green]Saved {saved_count} scripts[/]")
+
+        # Save to JSON file if requested
+        if output:
+            output_data = {
+                "niche": niche.value,
+                "count": len(content),
+                "query": query,
+                "trending": trending,
+                "content": [item.to_dict() for item in content],
+            }
+            output.write_text(json.dumps(output_data, indent=2, default=str))
+            console.print(f"\n[green]✓ Saved to {output}[/]")
+
+    except Exception as e:
+        console.print(f"\n[red]✗ Scraping failed: {e}[/]")
+        raise typer.Exit(1) from None
+
+
 if __name__ == "__main__":
     app()

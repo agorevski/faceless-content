@@ -247,6 +247,84 @@ class VoiceConfig(BaseSettings):
     speed: float = Field(default=1.0, ge=0.25, le=4.0, description="Speech speed")
 
 
+class ContentSourceSettings(BaseSettings):
+    """Configuration for content sources."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    # Optional API keys for extended sources
+    youtube_api_key: str = Field(
+        default="",
+        alias="YOUTUBE_API_KEY",
+        description="YouTube Data API v3 key (optional)",
+    )
+    newsapi_key: str = Field(
+        default="",
+        alias="NEWSAPI_KEY",
+        description="NewsAPI.org API key (optional)",
+    )
+
+    # Rate limiting settings
+    reddit_rate_limit: int = Field(
+        default=60,
+        ge=1,
+        le=120,
+        description="Reddit requests per minute",
+    )
+    wikipedia_rate_limit: int = Field(
+        default=200,
+        ge=1,
+        le=500,
+        description="Wikipedia requests per minute",
+    )
+    hackernews_rate_limit: int = Field(
+        default=60,
+        ge=1,
+        le=120,
+        description="Hacker News requests per minute",
+    )
+
+    # Caching settings
+    cache_enabled: bool = Field(
+        default=True,
+        description="Enable content caching",
+    )
+    cache_ttl_seconds: int = Field(
+        default=3600,
+        ge=60,
+        le=86400,
+        description="Cache time-to-live in seconds (1 hour default)",
+    )
+
+    # Content filtering
+    min_content_words: int = Field(
+        default=100,
+        ge=50,
+        le=500,
+        description="Minimum word count for content to be included",
+    )
+    min_score: int = Field(
+        default=50,
+        ge=0,
+        le=1000,
+        description="Minimum engagement score (Reddit upvotes, etc.)",
+    )
+
+    @property
+    def youtube_configured(self) -> bool:
+        """Check if YouTube API is configured."""
+        return bool(self.youtube_api_key)
+
+    @property
+    def newsapi_configured(self) -> bool:
+        """Check if NewsAPI is configured."""
+        return bool(self.newsapi_key)
+
+
 class Settings(BaseSettings):
     """
     Main application settings.
@@ -266,6 +344,9 @@ class Settings(BaseSettings):
     azure_openai: AzureOpenAISettings = Field(default_factory=AzureOpenAISettings)
     elevenlabs: ElevenLabsSettings = Field(default_factory=ElevenLabsSettings)
     reddit: RedditSettings = Field(default_factory=RedditSettings)
+    content_sources: ContentSourceSettings = Field(
+        default_factory=ContentSourceSettings
+    )
 
     # TTS provider selection
     use_elevenlabs: bool = Field(

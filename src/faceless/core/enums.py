@@ -249,6 +249,44 @@ class ImageQuality(str, Enum):
     HD = "hd"
 
 
+class ContentSourceType(str, Enum):
+    """
+    Types of content sources for fetching raw content.
+
+    Each source type represents a different platform or API
+    that can provide content for video scripts.
+    """
+
+    REDDIT = "reddit"
+    WIKIPEDIA = "wikipedia"
+    YOUTUBE = "youtube"
+    NEWS = "news"
+    HACKER_NEWS = "hacker_news"
+    OPEN_LIBRARY = "open_library"
+    AI_GENERATED = "ai_generated"
+
+    @property
+    def display_name(self) -> str:
+        """Human-readable name for the source type."""
+        return {
+            ContentSourceType.REDDIT: "Reddit",
+            ContentSourceType.WIKIPEDIA: "Wikipedia",
+            ContentSourceType.YOUTUBE: "YouTube",
+            ContentSourceType.NEWS: "News APIs",
+            ContentSourceType.HACKER_NEWS: "Hacker News",
+            ContentSourceType.OPEN_LIBRARY: "OpenLibrary",
+            ContentSourceType.AI_GENERATED: "AI Generated",
+        }[self]
+
+    @property
+    def requires_api_key(self) -> bool:
+        """Whether this source requires an API key."""
+        return self in (
+            ContentSourceType.YOUTUBE,
+            ContentSourceType.NEWS,
+        )
+
+
 class ThumbnailConcept(str, Enum):
     """
     Thumbnail design concepts for A/B testing.

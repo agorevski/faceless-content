@@ -441,6 +441,54 @@ class RateLimitError(ClientError):
         self.retry_after = retry_after
 
 
+class ContentFetchError(ClientError):
+    """
+    Raised when fetching content from a source fails.
+
+    Attributes:
+        source: The source type that failed.
+        niche: The niche being fetched.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        source: str | None = None,
+        niche: str | None = None,
+        status_code: int | None = None,
+    ) -> None:
+        details: dict[str, Any] = {}
+        if source:
+            details["source"] = source
+        if niche:
+            details["niche"] = niche
+        if status_code:
+            details["status_code"] = status_code
+        super().__init__(message, details=details)
+
+
+class SourceUnavailableError(ClientError):
+    """
+    Raised when a content source is unavailable.
+
+    This may be due to missing API keys, rate limits,
+    or the source being offline.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        source: str | None = None,
+        reason: str | None = None,
+    ) -> None:
+        details: dict[str, Any] = {}
+        if source:
+            details["source"] = source
+        if reason:
+            details["reason"] = reason
+        super().__init__(message, details=details)
+
+
 class ContentFilterError(ClientError):
     """
     Raised when content is rejected by safety filters.

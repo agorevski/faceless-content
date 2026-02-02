@@ -1,14 +1,20 @@
 """
-Scraper Service
+Scraper Service (DEPRECATED)
 
-Partially replaced by faceless.services.research_service and
-faceless.services.trending_service. Consider using those for new code.
+.. deprecated::
+    This module is deprecated and will be removed in a future version.
+    Use the following instead:
+    - `faceless.services.content_source_service.ContentSourceService` for multi-source content fetching
+    - `faceless.services.research_service.DeepResearchService` for AI-powered research
+    - `faceless.services.trending_service.TrendingService` for trending topics
 
-Fetches content from various free sources for video scripts
+This module is kept for backwards compatibility only.
+Fetches content from various free sources for video scripts.
 """
 
 import json
 import re
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -17,6 +23,17 @@ import httpx
 
 from faceless.config import get_settings
 from faceless.utils.logging import get_logger
+
+
+def _deprecation_warning() -> None:
+    """Issue deprecation warning."""
+    warnings.warn(
+        "scraper_service module is deprecated. "
+        "Use content_source_service.ContentSourceService instead.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+
 
 logger = get_logger(__name__)
 
@@ -65,7 +82,7 @@ def fetch_reddit_stories(
         List of story dicts with title, content, author, score, url
     """
     url = f"https://www.reddit.com/r/{subreddit}/top.json"
-    params = {
+    params: dict[str, str | int] = {
         "limit": limit * 2,  # Fetch more to filter by score
         "t": time_filter,
     }
@@ -158,7 +175,7 @@ def save_story(
 
     if output_dir is None:
         settings = get_settings()
-        output_dir = settings.output.base_dir / niche / "scripts"
+        output_dir = settings.output_base_dir / niche / "scripts"
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / filename
@@ -402,7 +419,7 @@ def fetch_and_process_stories(
 
     if output_dir is None:
         settings = get_settings()
-        output_dir = settings.output.base_dir / niche / "scripts"
+        output_dir = settings.output_base_dir / niche / "scripts"
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
