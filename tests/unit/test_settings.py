@@ -384,3 +384,260 @@ class TestGetSettings:
         settings2 = reload_settings()
         # After reload, should be new instance
         assert settings2 is not settings1
+
+
+class TestOutputSettingsDict:
+    """Tests for get_output_settings_dict function."""
+
+    def test_youtube_settings(self) -> None:
+        """Test getting YouTube output settings."""
+        from faceless.config.settings import get_output_settings_dict
+
+        settings = get_output_settings_dict("youtube")
+        assert settings["resolution"] == "1920x1080"
+        assert settings["fps"] == 30
+        assert settings["format"] == "mp4"
+        assert settings["codec"] == "libx264"
+
+    def test_tiktok_settings(self) -> None:
+        """Test getting TikTok output settings."""
+        from faceless.config.settings import get_output_settings_dict
+
+        settings = get_output_settings_dict("tiktok")
+        assert settings["resolution"] == "1080x1920"
+        assert settings["fps"] == 30
+        assert settings["format"] == "mp4"
+        assert settings["codec"] == "libx264"
+
+    def test_unknown_platform_raises_error(self) -> None:
+        """Test unknown platform raises ValueError."""
+        import pytest
+
+        from faceless.config.settings import get_output_settings_dict
+
+        with pytest.raises(ValueError) as exc_info:
+            get_output_settings_dict("instagram")
+
+        assert "Unknown platform" in str(exc_info.value)
+
+
+class TestGetLegacyPaths:
+    """Tests for get_legacy_paths function."""
+
+    def test_returns_paths_for_all_niches(self) -> None:
+        """Test legacy paths include all niches."""
+        from faceless.config.settings import Settings, get_legacy_paths
+        from faceless.core.enums import Niche
+
+        settings = Settings(
+            _env_file=None,
+            output_base_dir=Path("/tmp/output"),
+            shared_dir=Path("/tmp/shared"),
+        )
+        paths = get_legacy_paths(settings)
+
+        # Check all niches are included
+        for niche in Niche:
+            assert niche.value in paths
+            assert "scripts" in paths[niche.value]
+            assert "images" in paths[niche.value]
+            assert "audio" in paths[niche.value]
+            assert "videos" in paths[niche.value]
+            assert "output" in paths[niche.value]
+
+    def test_includes_shared_paths(self) -> None:
+        """Test legacy paths include shared resources."""
+        from faceless.config.settings import Settings, get_legacy_paths
+
+        settings = Settings(
+            _env_file=None,
+            output_base_dir=Path("/tmp/output"),
+            shared_dir=Path("/tmp/shared"),
+        )
+        paths = get_legacy_paths(settings)
+
+        assert "shared" in paths
+        assert paths["shared"]["templates"] == str(Path("/tmp/shared/templates"))
+        assert paths["shared"]["prompts"] == str(Path("/tmp/shared/prompts"))
+        assert paths["shared"]["music"] == str(Path("/tmp/shared/music"))
+
+    def test_uses_cached_settings_when_none(self) -> None:
+        """Test get_legacy_paths uses cached settings when None passed."""
+        from faceless.config.settings import get_legacy_paths, reload_settings
+
+        reload_settings()
+        paths = get_legacy_paths(None)
+
+        assert "shared" in paths
+        assert "scary-stories" in paths
+
+
+class TestGetLegacyVoiceSettings:
+    """Tests for get_legacy_voice_settings function."""
+
+    def test_returns_voice_settings_for_all_niches(self) -> None:
+        """Test legacy voice settings include all niches."""
+        from faceless.config.settings import Settings, get_legacy_voice_settings
+        from faceless.core.enums import Niche
+
+        settings = Settings(_env_file=None)
+        voice_settings = get_legacy_voice_settings(settings)
+
+        for niche in Niche:
+            assert niche.value in voice_settings
+            assert "openai_voice" in voice_settings[niche.value]
+            assert "openai_speed" in voice_settings[niche.value]
+            assert "elevenlabs_voice_id" in voice_settings[niche.value]
+
+    def test_scary_stories_voice_settings(self) -> None:
+        """Test scary stories voice settings."""
+        from faceless.config.settings import Settings, get_legacy_voice_settings
+
+        settings = Settings(_env_file=None)
+        voice_settings = get_legacy_voice_settings(settings)
+
+        assert voice_settings["scary-stories"]["openai_voice"] == "onyx"
+        assert voice_settings["scary-stories"]["openai_speed"] == 0.9
+
+    def test_uses_cached_settings_when_none(self) -> None:
+        """Test get_legacy_voice_settings uses cached settings when None passed."""
+        from faceless.config.settings import get_legacy_voice_settings, reload_settings
+
+        reload_settings()
+        voice_settings = get_legacy_voice_settings(None)
+
+        assert "scary-stories" in voice_settings
+
+
+class TestFFmpegPathValidators:
+    """Tests for FFmpeg/FFprobe path validators."""
+
+    def test_empty_ffmpeg_path_uses_default(self) -> None:
+        """Test empty ffmpeg_path defaults to 'ffmpeg'."""
+        from faceless.config.settings import Settings
+
+        settings = Settings(_env_file=None, ffmpeg_path="")
+        assert settings.ffmpeg_path == "ffmpeg"
+
+    def test_empty_ffprobe_path_uses_default(self) -> None:
+        """Test empty ffprobe_path defaults to 'ffprobe'."""
+        from faceless.config.settings import Settings
+
+        settings = Settings(_env_file=None, ffprobe_path="")
+        assert settings.ffprobe_path == "ffprobe"
+
+    def test_custom_ffmpeg_path_preserved(self) -> None:
+        """Test custom ffmpeg_path is preserved."""
+        from faceless.config.settings import Settings
+
+        settings = Settings(_env_file=None, ffmpeg_path="/usr/local/bin/ffmpeg")
+        assert settings.ffmpeg_path == "/usr/local/bin/ffmpeg"
+
+    def test_custom_ffprobe_path_preserved(self) -> None:
+        """Test custom ffprobe_path is preserved."""
+        from faceless.config.settings import Settings
+
+        settings = Settings(_env_file=None, ffprobe_path="/usr/local/bin/ffprobe")
+        assert settings.ffprobe_path == "/usr/local/bin/ffprobe"
+
+
+class TestElevenLabsVoiceIds:
+    """Tests for all ElevenLabs voice ID getters."""
+
+    def test_get_voice_id_all_niches(self) -> None:
+        """Test getting voice ID for all niches."""
+        from faceless.config.settings import ElevenLabsSettings
+        from faceless.core.enums import Niche
+
+        settings = ElevenLabsSettings(
+            voice_id_scary="scary-id",
+            voice_id_finance="finance-id",
+            voice_id_luxury="luxury-id",
+            voice_id_true_crime="crime-id",
+            voice_id_psychology="psych-id",
+            voice_id_history="history-id",
+            voice_id_motivation="motiv-id",
+            voice_id_space="space-id",
+            voice_id_conspiracy="conspiracy-id",
+            voice_id_animals="animals-id",
+            voice_id_health="health-id",
+            voice_id_relationships="rel-id",
+            voice_id_tech="tech-id",
+            voice_id_lifehacks="hacks-id",
+            voice_id_mythology="myth-id",
+            voice_id_unsolved="unsolved-id",
+            voice_id_geography="geo-id",
+            voice_id_ai_future="ai-id",
+            voice_id_philosophy="phil-id",
+            voice_id_books="books-id",
+            voice_id_celebrity="celeb-id",
+            voice_id_survival="surv-id",
+            voice_id_sleep="sleep-id",
+            voice_id_netflix="netflix-id",
+            voice_id_mockumentary="mock-id",
+        )
+
+        # Test each niche has a voice ID
+        assert settings.get_voice_id(Niche.SCARY_STORIES) == "scary-id"
+        assert settings.get_voice_id(Niche.FINANCE) == "finance-id"
+        assert settings.get_voice_id(Niche.LUXURY) == "luxury-id"
+        assert settings.get_voice_id(Niche.TRUE_CRIME) == "crime-id"
+        assert settings.get_voice_id(Niche.PSYCHOLOGY_FACTS) == "psych-id"
+        assert settings.get_voice_id(Niche.HISTORY) == "history-id"
+        assert settings.get_voice_id(Niche.MOTIVATION) == "motiv-id"
+        assert settings.get_voice_id(Niche.SPACE_ASTRONOMY) == "space-id"
+        assert settings.get_voice_id(Niche.CONSPIRACY_MYSTERIES) == "conspiracy-id"
+        assert settings.get_voice_id(Niche.ANIMAL_FACTS) == "animals-id"
+        assert settings.get_voice_id(Niche.HEALTH_WELLNESS) == "health-id"
+        assert settings.get_voice_id(Niche.RELATIONSHIP_ADVICE) == "rel-id"
+        assert settings.get_voice_id(Niche.TECH_GADGETS) == "tech-id"
+        assert settings.get_voice_id(Niche.LIFE_HACKS) == "hacks-id"
+        assert settings.get_voice_id(Niche.MYTHOLOGY_FOLKLORE) == "myth-id"
+        assert settings.get_voice_id(Niche.UNSOLVED_MYSTERIES) == "unsolved-id"
+        assert settings.get_voice_id(Niche.GEOGRAPHY_FACTS) == "geo-id"
+        assert settings.get_voice_id(Niche.AI_FUTURE_TECH) == "ai-id"
+        assert settings.get_voice_id(Niche.PHILOSOPHY) == "phil-id"
+        assert settings.get_voice_id(Niche.BOOK_SUMMARIES) == "books-id"
+        assert settings.get_voice_id(Niche.CELEBRITY_NET_WORTH) == "celeb-id"
+        assert settings.get_voice_id(Niche.SURVIVAL_TIPS) == "surv-id"
+        assert settings.get_voice_id(Niche.SLEEP_RELAXATION) == "sleep-id"
+        assert settings.get_voice_id(Niche.NETFLIX_RECOMMENDATIONS) == "netflix-id"
+        assert settings.get_voice_id(Niche.MOCKUMENTARY_HOWMADE) == "mock-id"
+
+
+class TestAllNicheVoiceSettings:
+    """Tests for voice settings for all niches."""
+
+    def test_get_voice_settings_all_niches(self) -> None:
+        """Test getting voice settings for all niches."""
+        from faceless.config.settings import Settings
+        from faceless.core.enums import Niche, Voice
+
+        settings = Settings(_env_file=None)
+
+        # Test all niches return valid settings
+        for niche in Niche:
+            voice, speed = settings.get_voice_settings(niche)
+            assert isinstance(voice, Voice)
+            assert isinstance(speed, float)
+            assert 0.25 <= speed <= 4.0
+
+    def test_voice_settings_specific_niches(self) -> None:
+        """Test specific niche voice settings."""
+        from faceless.config.settings import Settings
+        from faceless.core.enums import Niche, Voice
+
+        settings = Settings(_env_file=None)
+
+        # Test several specific niches
+        voice, speed = settings.get_voice_settings(Niche.MOTIVATION)
+        assert voice == Voice.ECHO
+        assert speed == 1.0
+
+        voice, speed = settings.get_voice_settings(Niche.SLEEP_RELAXATION)
+        assert voice == Voice.SHIMMER
+        assert speed == 0.8
+
+        voice, speed = settings.get_voice_settings(Niche.MYTHOLOGY_FOLKLORE)
+        assert voice == Voice.FABLE
+        assert speed == 0.9

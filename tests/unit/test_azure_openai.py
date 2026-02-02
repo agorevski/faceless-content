@@ -431,3 +431,207 @@ class TestAzureOpenAIClient:
         result = client.test_connection()
 
         assert result is False
+
+
+class TestAzureOpenAIClientErrorPaths:
+    """Additional tests for error paths in AzureOpenAIClient."""
+
+    @pytest.fixture
+    def mock_settings(self):
+        """Mock settings for client."""
+        with patch("faceless.clients.azure_openai.get_settings") as mock:
+            settings = MagicMock()
+            settings.azure_openai.is_configured = True
+            settings.azure_openai.endpoint = "https://test.openai.azure.com/"
+            settings.azure_openai.api_key = "test-api-key"
+            settings.azure_openai.image_deployment = "gpt-image-1"
+            settings.azure_openai.image_api_version = "2025-04-01-preview"
+            settings.azure_openai.chat_deployment = "gpt-4o"
+            settings.azure_openai.chat_api_version = "2024-08-01-preview"
+            settings.azure_openai.tts_deployment = "gpt-4o-mini-tts"
+            settings.azure_openai.tts_api_version = "2025-03-01-preview"
+            settings.request_timeout = 120
+            settings.max_retries = 3
+            settings.enable_retry = True
+            settings.get_voice_settings.return_value = (Voice.ONYX, 1.0)
+            mock.return_value = settings
+            yield settings
+
+    @pytest.fixture
+    def mock_base_client(self, mock_settings):
+        """Mock the base client HTTP methods."""
+        with patch("faceless.clients.base.httpx.Client") as mock:
+            yield mock
+
+    def test_generate_image_api_error(self, mock_settings, mock_base_client) -> None:
+        """Test image generation with API error not related to content filter."""
+        from faceless.clients.azure_openai import AzureOpenAIClient
+
+        client = AzureOpenAIClient()
+        client._post = MagicMock(side_effect=Exception("Network error"))
+
+        with pytest.raises(ImageGenerationError) as exc_info:
+            client.generate_image("A test prompt")
+
+        assert "Network error" in str(exc_info.value)
+
+    def test_generate_image_error_response_calls_handler(
+        self, mock_settings, mock_base_client
+    ) -> None:
+        """Test image generation calls error handler on non-200 status."""
+        from faceless.clients.azure_openai import AzureOpenAIClient
+
+        client = AzureOpenAIClient()
+
+        mock_response = MagicMock()
+        mock_response.status_code = 400
+        mock_response.json.return_value = {
+            "error": {"code": "invalid_prompt", "message": "Bad prompt"}
+        }
+        client._post = MagicMock(return_value=mock_response)
+
+        # Error handler raises AzureOpenAIError which is wrapped in ImageGenerationError
+        with pytest.raises(ImageGenerationError) as exc_info:
+            client.generate_image("A bad prompt")
+        
+        assert "Bad prompt" in str(exc_info.value)
+
+    def test_chat_error_response_calls_handler(
+        self, mock_settings, mock_base_client
+    ) -> None:
+        """Test chat completion calls error handler on non-200 status."""
+        from faceless.clients.azure_openai import AzureOpenAIClient
+
+        client = AzureOpenAIClient()
+
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = "Internal Server Error"
+        client._post = MagicMock(return_value=mock_response)
+
+        with pytest.raises(AzureOpenAIError):
+            client.chat([{"role": "user", "content": "Hello"}])
+
+    def test_chat_generic_exception(self, mock_settings, mock_base_client) -> None:
+        """Test chat completion with generic exception."""
+        from faceless.clients.azure_openai import AzureOpenAIClient
+
+        client = AzureOpenAIClient()
+        client._post = MagicMock(side_effect=RuntimeError("Unexpected error"))
+
+        with pytest.raises(AzureOpenAIError) as exc_info:
+            client.chat([{"role": "user", "content": "Test"}])
+
+        assert "Unexpected error" in str(exc_info.value)
+
+    def test_chat_reraises_azure_error(self, mock_settings, mock_base_client) -> None:
+        """Test chat completion re-raises AzureOpenAIError."""
+        from faceless.clients.azure_openai import AzureOpenAIClient
+
+        client = AzureOpenAIClient()
+        client._post = MagicMock(
+            side_effect=AzureOpenAIError("Auth failed", status_code=401)
+        )
+
+        with pytest.raises(AzureOpenAIError) as exc_info:
+            client.chat([{"role": "user", "content": "Test"}])
+
+        assert exc_info.value.details["status_code"] == 401
+
+    def test_generate_speech_error_response(
+        self, mock_settings, mock_base_client
+    ) -> None:
+        """Test speech generation calls error handler on non-200 status."""
+        from faceless.clients.azure_openai import AzureOpenAIClient
+
+        client = AzureOpenAIClient()
+
+        mock_response = MagicMock()
+        mock_response.status_code = 400
+        mock_response.json.return_value = {
+            "error": {"code": "invalid_voice", "message": "Bad voice"}
+        }
+        client._post = MagicMock(return_value=mock_response)
+
+        with pytest.raises(AzureOpenAIError):
+            client.generate_speech("Hello world")
+
+    def test_generate_speech_reraises_azure_error(
+        self, mock_settings, mock_base_client
+    ) -> None:
+        """Test speech generation re-raises AzureOpenAIError."""
+        from faceless.clients.azure_openai import AzureOpenAIClient
+
+        client = AzureOpenAIClient()
+        client._post = MagicMock(
+            side_effect=AzureOpenAIError("TTS error", status_code=503)
+        )
+
+        with pytest.raises(AzureOpenAIError) as exc_info:
+            client.generate_speech("Test")
+
+        assert exc_info.value.details["status_code"] == 503
+
+    def test_generate_image_reraises_content_filter_error(
+        self, mock_settings, mock_base_client
+    ) -> None:
+        """Test image generation re-raises ContentFilterError."""
+        from faceless.clients.azure_openai import AzureOpenAIClient
+
+        client = AzureOpenAIClient()
+        client._post = MagicMock(
+            side_effect=ContentFilterError("Content blocked", filter_reason="violence")
+        )
+
+        with pytest.raises(ContentFilterError):
+            client.generate_image("A violent scene")
+
+    def test_generate_image_reraises_image_generation_error(
+        self, mock_settings, mock_base_client
+    ) -> None:
+        """Test image generation re-raises ImageGenerationError."""
+        from faceless.clients.azure_openai import AzureOpenAIClient
+
+        client = AzureOpenAIClient()
+        client._post = MagicMock(
+            side_effect=ImageGenerationError("Generation failed", prompt="test")
+        )
+
+        with pytest.raises(ImageGenerationError):
+            client.generate_image("A test")
+
+    def test_handle_error_response_content_in_message(
+        self, mock_settings, mock_base_client
+    ) -> None:
+        """Test content filter detection from message text."""
+        from faceless.clients.azure_openai import AzureOpenAIClient
+
+        client = AzureOpenAIClient()
+
+        mock_response = MagicMock()
+        mock_response.status_code = 400
+        mock_response.json.return_value = {
+            "error": {
+                "code": "safety_violation",
+                "message": "Content policy violation detected",
+            }
+        }
+
+        with pytest.raises(ContentFilterError):
+            client._handle_error_response(mock_response, "Image generation")
+
+    def test_save_audio_without_niche_or_voice(
+        self, mock_settings, mock_base_client, tmp_path: Path
+    ) -> None:
+        """Test save_audio defaults to ONYX voice when no niche or voice."""
+        from faceless.clients.azure_openai import AzureOpenAIClient
+
+        client = AzureOpenAIClient()
+        client.generate_speech = MagicMock(return_value=b"audio")
+
+        output_path = tmp_path / "audio.mp3"
+        client.save_audio("Hello", output_path)
+
+        client.generate_speech.assert_called_with(
+            text="Hello", voice=Voice.ONYX, speed=1.0
+        )
