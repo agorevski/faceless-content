@@ -9,7 +9,7 @@ AI-powered content production pipeline for creating "faceless" videos with AI-ge
 
 ## ✨ Features
 
-- **Multi-Niche Support**: 23 content niches including scary stories, finance, luxury, true crime, psychology, and more
+- **Multi-Niche Support**: 25 content niches including scary stories, finance, luxury, true crime, psychology, and more
 - **AI Image Generation**: Azure OpenAI (GPT-Image-1/DALL-E) for scene illustrations
 - **Text-to-Speech**: Azure OpenAI TTS or ElevenLabs for narration
 - **Automated Video Assembly**: FFmpeg-based video production
@@ -81,10 +81,22 @@ faceless generate scary-stories -s path/to/script.json --enhance
 faceless-content/
 ├── src/faceless/           # Main package
 │   ├── cli/                # Command-line interface
-│   ├── clients/            # API clients (Azure, ElevenLabs, Reddit)
+│   ├── clients/            # API clients (Azure, ElevenLabs)
 │   ├── config/             # Configuration management
 │   ├── core/               # Domain models, enums, exceptions
+│   ├── pipeline/           # Pipeline orchestration
 │   ├── services/           # Business logic services
+│   │   ├── enhancer_service.py  # Script enhancement with GPT
+│   │   ├── image_service.py     # AI image generation
+│   │   ├── tts_service.py       # Text-to-speech generation
+│   │   ├── video_service.py     # Video assembly with FFmpeg
+│   │   ├── research_service.py  # Deep topic research
+│   │   ├── quality_service.py   # Script quality evaluation
+│   │   ├── trending_service.py  # Trending topic discovery
+│   │   ├── subtitle_service.py  # Subtitle generation (SRT/VTT)
+│   │   ├── thumbnail_service.py # Thumbnail generation
+│   │   ├── scraper_service.py   # Content scraping from sources
+│   │   └── metadata_service.py  # Posting metadata generation
 │   └── utils/              # Utilities (logging, helpers)
 ├── tests/                  # Test suite
 │   ├── unit/               # Unit tests
@@ -170,9 +182,10 @@ pre-commit install
 
 - [Architecture Overview](documentation/ARCHITECTURE.md)
 - [Setup Guide](documentation/SETUP_GUIDE.md)
-- [Pipeline Reference](documentation/PIPELINE_README.md)
 - [Future Improvements](documentation/FUTURE_IMPROVEMENTS.md)
 - [Improvement Suggestions](documentation/SUGGESTIONS.md)
+- [Business Plans](documentation/BUSINESS_PLANS.md)
+- [Content Ideas](documentation/CONTENT_IDEAS.md)
 
 ## 🔧 CLI Reference
 

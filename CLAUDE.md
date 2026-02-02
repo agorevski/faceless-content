@@ -23,7 +23,7 @@ faceless validate --test-connections
 
 ## Project Overview
 
-Python-based content production pipeline for creating "faceless" videos (YouTube/TikTok) with AI-generated images, text-to-speech narration, and automated video assembly. Supports 23 content niches.
+Python-based content production pipeline for creating "faceless" videos (YouTube/TikTok) with AI-generated images, text-to-speech narration, and automated video assembly. Supports 25 content niches.
 
 ## Architecture
 
@@ -33,7 +33,7 @@ src/faceless/
 ├── clients/    # External API clients (Azure OpenAI)
 ├── config/     # Pydantic Settings configuration
 ├── core/       # Domain models, enums, exceptions
-├── services/   # Business logic (enhancer, image, tts, video)
+├── services/   # Business logic (enhancer, image, tts, video, etc.)
 ├── pipeline/   # Orchestrator coordinating services
 └── utils/      # Logging utilities
 ```
@@ -91,7 +91,7 @@ class MyService:
 ```python
 from faceless.core.enums import Niche, Platform, Voice, JobStatus
 
-# 23 niches available
+# 25 niches available
 Niche.SCARY_STORIES, Niche.FINANCE, Niche.LUXURY, Niche.TRUE_CRIME, ...
 
 # Platforms

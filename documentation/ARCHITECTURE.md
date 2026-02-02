@@ -104,7 +104,11 @@ faceless-content/
 │   │   ├── video_service.py    # Video assembly with FFmpeg
 │   │   ├── research_service.py # Deep topic research
 │   │   ├── quality_service.py  # Script quality evaluation
-│   │   └── trending_service.py # Trending topic discovery
+│   │   ├── trending_service.py # Trending topic discovery
+│   │   ├── subtitle_service.py # Subtitle generation (SRT/VTT)
+│   │   ├── thumbnail_service.py# Thumbnail generation
+│   │   ├── scraper_service.py  # Content scraping from sources
+│   │   └── metadata_service.py # Posting metadata generation
 │   │
 │   └── utils/                  # Utilities
 │       ├── __init__.py
@@ -155,6 +159,9 @@ Provides the command-line interface using [Typer](https://typer.tiangolo.com/).
 | `faceless validate` | Check configuration and API connections |
 | `faceless init <niche>` | Initialize output directories |
 | `faceless info` | Display current settings |
+| `faceless research <topic>` | Conduct deep topic research |
+| `faceless quality <script>` | Evaluate script quality |
+| `faceless trending <niche>` | Discover trending topics |
 
 **Options for `generate`:**
 - `-c, --count` - Number of videos (1-10)
@@ -241,6 +248,36 @@ Discovers trending topics for content:
 - Content calendar recommendations
 - CLI: `faceless trending niche`
 
+#### SubtitleService
+Generates subtitles for videos:
+- SRT and VTT format output
+- Audio-based timing extraction
+- Script-based subtitle generation
+- Animated caption data for TikTok-style effects
+- Subtitle burn-in to video with FFmpeg
+
+#### ThumbnailService
+Generates thumbnail variants:
+- Multiple concept templates (reaction, reveal, mystery, etc.)
+- A/B testing variants generation
+- Text overlay instructions
+- Platform-optimized sizing
+
+#### ScraperService
+Fetches content from external sources:
+- Reddit story scraping
+- Creepypasta content fetching
+- Text cleaning and processing
+- Story to script conversion
+- Image prompt generation
+
+#### MetadataService
+Generates posting metadata:
+- Title and description optimization
+- Hashtag generation
+- Posting schedule recommendations
+- Series metadata management
+
 ### 4. Clients Layer (`clients/`)
 
 Handles external API communication with retry logic.
@@ -267,6 +304,7 @@ class Niche(str, Enum):
     SCARY_STORIES = "scary-stories"
     FINANCE = "finance"
     LUXURY = "luxury"
+    # ... 22 more niches (25 total)
 
 class Platform(str, Enum):
     YOUTUBE = "youtube"

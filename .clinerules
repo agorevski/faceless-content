@@ -1,7 +1,7 @@
 # Faceless Content Pipeline - Cline Rules
 
 ## Project Overview
-This is a Python-based content production pipeline for creating "faceless" videos (YouTube/TikTok) with AI-generated images, text-to-speech narration, and automated video assembly. It supports 23 content niches across various categories including scary-stories, finance, luxury, true-crime, psychology-facts, history, motivation, space-astronomy, conspiracy-mysteries, animal-facts, health-wellness, relationship-advice, tech-gadgets, life-hacks, mythology-folklore, unsolved-mysteries, geography-facts, ai-future-tech, philosophy, book-summaries, celebrity-net-worth, survival-tips, and sleep-relaxation.
+This is a Python-based content production pipeline for creating "faceless" videos (YouTube/TikTok) with AI-generated images, text-to-speech narration, and automated video assembly. It supports 25 content niches across various categories including scary-stories, finance, luxury, true-crime, psychology-facts, history, motivation, space-astronomy, conspiracy-mysteries, animal-facts, health-wellness, relationship-advice, tech-gadgets, life-hacks, mythology-folklore, unsolved-mysteries, geography-facts, ai-future-tech, philosophy, book-summaries, celebrity-net-worth, survival-tips, sleep-relaxation, netflix-recommendations, and mockumentary-howmade.
 
 ## Technology Stack
 - **Language:** Python 3.10+ (3.11+ recommended)
@@ -37,7 +37,11 @@ faceless-content/
 │   │   ├── video_service.py     # Video assembly
 │   │   ├── research_service.py  # Deep research on topics
 │   │   ├── quality_service.py   # Script quality evaluation
-│   │   └── trending_service.py  # Trending topic discovery
+│   │   ├── trending_service.py  # Trending topic discovery
+│   │   ├── subtitle_service.py  # Subtitle generation (SRT/VTT)
+│   │   ├── thumbnail_service.py # Thumbnail generation
+│   │   ├── scraper_service.py   # Content scraping from sources
+│   │   └── metadata_service.py  # Posting metadata generation
 │   ├── pipeline/           # Pipeline orchestration
 │   │   └── orchestrator.py # Main pipeline coordinator
 │   ├── utils/              # Utilities (logging, helpers)
@@ -201,12 +205,13 @@ faceless trending scary-stories --calendar -o trends.json
 faceless validate --test-connections  # Test API connectivity
 faceless validate -n scary-stories    # Validate for specific niche
 
-# Available niches (23 total):
+# Available niches (25 total):
 # scary-stories, finance, luxury, true-crime, psychology-facts, history,
 # motivation, space-astronomy, conspiracy-mysteries, animal-facts,
 # health-wellness, relationship-advice, tech-gadgets, life-hacks,
 # mythology-folklore, unsolved-mysteries, geography-facts, ai-future-tech,
-# philosophy, book-summaries, celebrity-net-worth, survival-tips, sleep-relaxation
+# philosophy, book-summaries, celebrity-net-worth, survival-tips, sleep-relaxation,
+# netflix-recommendations, mockumentary-howmade
 ```
 
 ## Development Commands
@@ -270,7 +275,7 @@ Dev dependencies:
 - `pre-commit>=3.6.0`, `respx>=0.20.0`
 
 ## Core Enums Reference
-- **Niche** (23 values): Content categories with display names, subreddit sources
+- **Niche** (25 values): Content categories with display names, subreddit sources
 - **Platform** (2 values): YOUTUBE (1920x1080, 16:9), TIKTOK (1080x1920, 9:16)
 - **JobStatus** (11 values): Pipeline job states (pending → completed/failed)
 - **Voice** (6 values): Azure TTS voices (alloy, echo, fable, onyx, nova, shimmer)
