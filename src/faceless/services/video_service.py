@@ -86,12 +86,12 @@ class VideoService(LoggerMixin):
         # Build command - use shell=True on Windows if executable not resolved
         use_shell = self._ffmpeg == "ffmpeg"  # Not resolved to full path
 
+        cmd: str | list[str]
         if use_shell:
             # Build command string for shell execution
-            cmd_str = "ffmpeg " + " ".join(
+            cmd = "ffmpeg " + " ".join(
                 f'"{arg}"' if " " in arg else arg for arg in args
             )
-            cmd = cmd_str
         else:
             cmd = [self._ffmpeg] + args
 

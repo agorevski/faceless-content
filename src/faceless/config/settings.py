@@ -10,7 +10,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from faceless.core.enums import Niche, Voice
@@ -309,7 +309,7 @@ class Settings(BaseSettings):
 
     @field_validator("ffmpeg_path", "ffprobe_path", mode="before")
     @classmethod
-    def empty_to_default(cls, v: str, info) -> str:
+    def empty_to_default(cls, v: str, info: ValidationInfo) -> str:
         """Convert empty string to default command name."""
         if v == "" or v is None:
             # Return default based on field name
