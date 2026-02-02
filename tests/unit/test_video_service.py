@@ -400,7 +400,53 @@ class TestVideoService:
         video_path = tmp_path / "video.mp4"
 
         with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = Exception("ffprobe error")
+            mock_run.side_effect = OSError("ffprobe not found")
+
+            result = video_service.get_video_duration(video_path)
+
+            assert result == 0.0
+
+    def test_get_video_duration_nonzero_returncode(
+        self, video_service, tmp_path: Path
+    ) -> None:
+        """Test getting video duration when ffprobe returns non-zero exit code."""
+        video_path = tmp_path / "video.mp4"
+        video_path.write_bytes(b"video")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=1, stdout="", stderr="File not found"
+            )
+
+            result = video_service.get_video_duration(video_path)
+
+            assert result == 0.0
+
+    def test_get_video_duration_timeout(self, video_service, tmp_path: Path) -> None:
+        """Test getting video duration with timeout."""
+        import subprocess
+
+        video_path = tmp_path / "video.mp4"
+        video_path.write_bytes(b"video")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = subprocess.TimeoutExpired(cmd="ffprobe", timeout=30)
+
+            result = video_service.get_video_duration(video_path)
+
+            assert result == 0.0
+
+    def test_get_video_duration_invalid_output(
+        self, video_service, tmp_path: Path
+    ) -> None:
+        """Test getting video duration with invalid output."""
+        video_path = tmp_path / "video.mp4"
+        video_path.write_bytes(b"video")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout="not_a_number\n", stderr=""
+            )
 
             result = video_service.get_video_duration(video_path)
 

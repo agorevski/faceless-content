@@ -270,7 +270,7 @@ class VideoService(LoggerMixin):
 
         # Create concat file
         concat_file = output_path.parent / ".concat_list.txt"
-        with open(concat_file, "w") as f:
+        with open(concat_file, "w", encoding="utf-8") as f:
             for video in scene_videos:
                 f.write(f"file '{video.absolute()}'\n")
 
@@ -665,13 +665,36 @@ class VideoService(LoggerMixin):
                     timeout=30,
                 )
 
+            if result.returncode != 0:
+                self.logger.warning(
+                    "ffprobe returned non-zero exit code",
+                    path=str(video_path),
+                    returncode=result.returncode,
+                    stderr=result.stderr.strip() if result.stderr else None,
+                )
+                return 0.0
+
             stdout = result.stdout.strip()
             if not stdout:
                 return 0.0
             return float(stdout)
-        except Exception as e:
+        except subprocess.TimeoutExpired:
             self.logger.warning(
-                "Could not get video duration",
+                "ffprobe timed out",
+                path=str(video_path),
+            )
+            return 0.0
+        except ValueError as e:
+            self.logger.warning(
+                "Could not parse video duration",
+                path=str(video_path),
+                output=result.stdout.strip() if result.stdout else None,
+                error=str(e),
+            )
+            return 0.0
+        except OSError as e:
+            self.logger.warning(
+                "Could not run ffprobe",
                 path=str(video_path),
                 error=str(e),
             )
