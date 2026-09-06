@@ -10,6 +10,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from faceless.core.exceptions import ExternalToolError
+
 # =============================================================================
 # Timestamp Formatting Tests
 # =============================================================================
@@ -93,7 +95,7 @@ class TestGetAudioDuration:
         """Test successful duration extraction."""
         from faceless.services.subtitle_service import get_audio_duration
 
-        mock_run.return_value = MagicMock(stdout="125.5\n")
+        mock_run.return_value = MagicMock(returncode=0, stdout="125.5\n", stderr="")
 
         result = get_audio_duration("test.mp3")
 
@@ -102,27 +104,54 @@ class TestGetAudioDuration:
 
     @patch("faceless.services.subtitle_service.subprocess.run")
     def test_get_audio_duration_timeout(self, mock_run: MagicMock) -> None:
-        """Test fallback on timeout."""
+        """Timeout errors must not fabricate a 60-second duration."""
         import subprocess
 
         from faceless.services.subtitle_service import get_audio_duration
 
         mock_run.side_effect = subprocess.TimeoutExpired("ffprobe", 30)
 
-        result = get_audio_duration("test.mp3")
-
-        assert result == 60.0  # Default fallback
+        with pytest.raises(ExternalToolError, match="timed out"):
+            get_audio_duration("test.mp3")
 
     @patch("faceless.services.subtitle_service.subprocess.run")
     def test_get_audio_duration_invalid_output(self, mock_run: MagicMock) -> None:
-        """Test fallback on invalid output."""
+        """Invalid probe output must not fabricate a 60-second duration."""
         from faceless.services.subtitle_service import get_audio_duration
 
-        mock_run.return_value = MagicMock(stdout="invalid")
+        mock_run.return_value = MagicMock(returncode=0, stdout="invalid", stderr="")
 
-        result = get_audio_duration("test.mp3")
+        with pytest.raises(ExternalToolError, match="invalid duration"):
+            get_audio_duration("test.mp3")
 
-        assert result == 60.0  # Default fallback
+    def test_get_audio_duration_configured_executable(self, tmp_path: Path) -> None:
+        from faceless.services.subtitle_service import get_audio_duration
+
+        executable = str(tmp_path / "tools & %PATH%" / "probe.exe")
+        audio = tmp_path / "Alice's & %PATH%.mp3"
+        with (
+            patch("faceless.services.subtitle_service.get_settings") as mock_settings,
+            patch("subprocess.run") as mock_run,
+        ):
+            mock_settings.return_value.ffprobe_path = executable
+            mock_run.return_value = MagicMock(returncode=0, stdout="1.5", stderr="")
+            assert get_audio_duration(audio) == 1.5
+        assert mock_run.call_args.args[0][0] == executable
+        assert mock_run.call_args.args[0][-1] == str(audio)
+        assert mock_run.call_args.kwargs["shell"] is False
+
+    def test_audio_probe_failure_does_not_write_subtitles(self, tmp_path: Path) -> None:
+        from faceless.services.subtitle_service import create_subtitles_from_audio
+
+        audio = tmp_path / "bad.mp3"
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=1, stdout="60", stderr="corrupt audio"
+            )
+            with pytest.raises(ExternalToolError, match="probe failed"):
+                create_subtitles_from_audio(audio, "finance")
+        assert not audio.with_suffix(".srt").exists()
+        assert not audio.with_suffix(".vtt").exists()
 
 
 # =============================================================================

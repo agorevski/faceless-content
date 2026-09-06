@@ -6,13 +6,19 @@ implementing common patterns like retries, timeouts, and structured logging.
 """
 
 from collections.abc import Callable
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+from math import ceil
 from typing import Any, TypeVar, cast
 
 import httpx
 from tenacity import (
+    RetryCallState,
+    Retrying,
     before_sleep_log,
     retry,
     retry_if_exception_type,
+    retry_if_result,
     stop_after_attempt,
     wait_exponential,
 )
@@ -51,13 +57,15 @@ class BaseHTTPClient(LoggerMixin):
         Args:
             base_url: Base URL for all requests
             timeout: Request timeout in seconds (uses settings default if None)
-            max_retries: Maximum retry attempts (uses settings default if None)
+            max_retries: Retries after the initial attempt (settings default if None)
             headers: Default headers for all requests
         """
         settings = get_settings()
         self._base_url = base_url.rstrip("/") if base_url else ""
         self._timeout = timeout or settings.request_timeout
-        self._max_retries = max_retries or settings.max_retries
+        self._max_retries = (
+            settings.max_retries if max_retries is None else max_retries
+        )
         self._enable_retry = settings.enable_retry
         self._default_headers = headers or {}
 
@@ -83,6 +91,46 @@ class BaseHTTPClient(LoggerMixin):
         if path.startswith("http"):
             return path
         return f"{self._base_url}/{path.lstrip('/')}"
+
+    @staticmethod
+    def _retry_after(response: httpx.Response) -> int | None:
+        """Parse Retry-After delta seconds or an HTTP date."""
+        value = response.headers.get("Retry-After")
+        if not value:
+            return None
+        try:
+            return max(0, int(value))
+        except ValueError:
+            try:
+                retry_at = parsedate_to_datetime(value)
+                if retry_at.tzinfo is None:
+                    retry_at = retry_at.replace(tzinfo=timezone.utc)
+                return max(
+                    0, ceil((retry_at - datetime.now(timezone.utc)).total_seconds())
+                )
+            except (TypeError, ValueError, OverflowError):
+                return None
+
+    def _retry_wait(self, state: RetryCallState) -> float:
+        """Use server guidance when available, bounded to a minute per retry."""
+        if state.outcome is not None and not state.outcome.failed:
+            delay = self._retry_after(state.outcome.result())
+            if delay is not None:
+                return float(min(delay, 60))
+        return float(min(2 ** (state.attempt_number - 1), 60))
+
+    def _log_retry(self, state: RetryCallState) -> None:
+        self.logger.warning(
+            "Retrying HTTP request",
+            attempt=state.attempt_number,
+            wait=state.next_action.sleep if state.next_action else None,
+        )
+
+    @staticmethod
+    def _retry_exhausted(state: RetryCallState) -> httpx.Response:
+        # Preserve the final response or transport error instead of RetryError.
+        assert state.outcome is not None
+        return cast(httpx.Response, state.outcome.result())
 
     def _request(
         self,
@@ -115,7 +163,26 @@ class BaseHTTPClient(LoggerMixin):
         )
 
         try:
-            response = self._client.request(method, path, **kwargs)
+            retrying = Retrying(
+                stop=stop_after_attempt(
+                    self._max_retries + 1 if self._enable_retry else 1
+                ),
+                wait=self._retry_wait,
+                retry=retry_if_exception_type(
+                    (
+                        httpx.TimeoutException,
+                        httpx.NetworkError,
+                        httpx.RemoteProtocolError,
+                    )
+                )
+                | retry_if_result(
+                    lambda response: response.status_code
+                    in {408, 429, 500, 502, 503, 504}
+                ),
+                before_sleep=self._log_retry,
+                retry_error_callback=self._retry_exhausted,
+            )
+            response = retrying(self._client.request, method, path, **kwargs)
 
             # Log response
             self.logger.debug(
@@ -128,10 +195,9 @@ class BaseHTTPClient(LoggerMixin):
 
             # Check for rate limiting
             if response.status_code == 429:
-                retry_after = response.headers.get("Retry-After")
                 raise RateLimitError(
                     message="Rate limit exceeded",
-                    retry_after=int(retry_after) if retry_after else None,
+                    retry_after=self._retry_after(response),
                     service=self.__class__.__name__,
                 )
 

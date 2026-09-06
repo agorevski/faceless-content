@@ -5,13 +5,12 @@ Creates click-worthy thumbnails using AI image generation
 Thumbnails are 80% of click-through rate - this is critical for views
 """
 
-import base64
 from pathlib import Path
 from typing import Any
 
-import httpx
-
+from faceless.clients.azure_openai import AzureOpenAIClient
 from faceless.config import get_settings
+from faceless.core.exceptions import FacelessError, ImageGenerationError
 from faceless.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -153,7 +152,8 @@ def generate_thumbnail(
     niche: str,
     output_name: str,
     output_dir: Path | None = None,
-    size: str = "1792x1024",
+    size: str = "1536x1024",
+    client: AzureOpenAIClient | None = None,
 ) -> Path:
     """
     Generate a thumbnail image using Azure OpenAI.
@@ -164,40 +164,22 @@ def generate_thumbnail(
         output_name: Output filename (without extension)
         output_dir: Optional output directory
         size: Image size (default optimized for YouTube)
+        client: Optional shared Azure client; owned by the caller
 
     Returns:
         Path to generated thumbnail
     """
-    settings = get_settings()
-
     if output_dir is None:
+        settings = get_settings()
         output_dir = settings.output_base_dir / niche / "images" / "thumbnails"
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"{output_name}.png"
 
     # Skip if already exists
-    if output_path.exists():
+    if output_path.is_file() and output_path.stat().st_size > 0:
         logger.info("Thumbnail already exists", path=str(output_path))
         return output_path
-
-    url = (
-        f"{settings.azure_openai.endpoint}openai/deployments/"
-        f"{settings.azure_openai.image_deployment}/images/generations"
-        f"?api-version={settings.azure_openai.image_api_version}"
-    )
-
-    headers = {
-        "Content-Type": "application/json",
-        "api-key": settings.azure_openai.api_key,
-    }
-
-    payload = {
-        "prompt": prompt,
-        "size": size,
-        "quality": "high",
-        "n": 1,
-    }
 
     logger.info(
         "Generating thumbnail",
@@ -205,38 +187,19 @@ def generate_thumbnail(
         prompt_preview=prompt[:80],
     )
 
-    try:
-        with httpx.Client(timeout=120.0) as client:
-            response = client.post(url, headers=headers, json=payload)
-            response.raise_for_status()
-            result = response.json()
+    if client is None:
+        owned_client = AzureOpenAIClient()
+        with owned_client:
+            image_bytes = owned_client.generate_image(prompt, size=size)
+    else:
+        image_bytes = client.generate_image(prompt, size=size)
+    if not image_bytes:
+        raise ImageGenerationError("Thumbnail response contained no image bytes")
 
-        if "data" in result and len(result["data"]) > 0:
-            image_data = result["data"][0]
-
-            if "url" in image_data:
-                with httpx.Client(timeout=60.0) as client:
-                    img_response = client.get(image_data["url"])
-                    img_bytes = img_response.content
-            elif "b64_json" in image_data:
-                img_bytes = base64.b64decode(image_data["b64_json"])
-            else:
-                raise ValueError("Unexpected response format")
-
-            output_path.write_bytes(img_bytes)
-
-            # Save prompt for reference
-            prompt_path = output_path.with_suffix(".txt")
-            prompt_path.write_text(prompt, encoding="utf-8")
-
-            logger.info("Thumbnail saved", path=str(output_path))
-            return output_path
-        else:
-            raise ValueError(f"No image data in response: {result}")
-
-    except httpx.HTTPStatusError as e:
-        logger.error("Thumbnail generation failed", error=str(e))
-        raise
+    output_path.write_bytes(image_bytes)
+    output_path.with_suffix(".txt").write_text(prompt, encoding="utf-8")
+    logger.info("Thumbnail saved", path=str(output_path))
+    return output_path
 
 
 def generate_thumbnail_variants(
@@ -246,6 +209,7 @@ def generate_thumbnail_variants(
     output_dir: Path | None = None,
     num_variants: int = 3,
     concepts: list[str] | None = None,
+    client: AzureOpenAIClient | None = None,
 ) -> list[Path | None]:
     """
     Generate multiple thumbnail variants for A/B testing.
@@ -257,6 +221,7 @@ def generate_thumbnail_variants(
         output_dir: Optional output directory
         num_variants: Number of variants to generate
         concepts: List of concepts to use (defaults to auto-selection)
+        client: Optional shared Azure client; owned by the caller
 
     Returns:
         List of paths to generated thumbnails
@@ -285,9 +250,11 @@ def generate_thumbnail_variants(
         output_name = f"{base_name}_thumb_v{i}_{concept}"
 
         try:
-            path = generate_thumbnail(prompt, niche, output_name, output_dir)
+            path = generate_thumbnail(
+                prompt, niche, output_name, output_dir, client=client
+            )
             paths.append(path)
-        except Exception as e:
+        except (FacelessError, OSError, ValueError) as e:
             logger.warning("Failed to generate variant", variant=i, error=str(e))
             paths.append(None)
 

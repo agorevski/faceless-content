@@ -15,8 +15,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from faceless.core.enums import JobStatus, Niche, Platform
-from faceless.core.exceptions import FFmpegError, VideoAssemblyError
+from faceless.core.exceptions import ExternalToolError, FFmpegError, VideoAssemblyError
 from faceless.core.models import Checkpoint, Scene, Script
+from faceless.services.video_service import VideoService
 
 
 class TestVideoService:
@@ -91,6 +92,25 @@ class TestVideoService:
                 video_service._run_ffmpeg(["-invalid"], "Test failure")
 
             assert exc_info.value.details["return_code"] == 1
+
+    @pytest.mark.parametrize("executable", ["ffmpeg", r"C:\Program Files\ffmpeg.exe"])
+    def test_run_ffmpeg_preserves_arguments_without_shell(
+        self, video_service: VideoService, executable: str
+    ) -> None:
+        """Shell metacharacters in filters and paths must remain literal arguments."""
+        video_service._ffmpeg = executable
+        args = [
+            "-filter_complex",
+            "[0:a]volume=0.15[music];[music]anull[aout]",
+            "Alice's story & %PATH%.mp4",
+        ]
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+
+            video_service._run_ffmpeg(args)
+
+        assert mock_run.call_args.args[0] == [executable, *args]
+        assert mock_run.call_args.kwargs["shell"] is False
 
     def test_run_ffmpeg_timeout(self, video_service) -> None:
         """Test FFmpeg timeout."""
@@ -238,8 +258,65 @@ class TestVideoService:
 
             video_service.concatenate_scenes([video1], output_path)
 
-            concat_file = output_path.parent / ".concat_list.txt"
-            assert not concat_file.exists()
+            assert not list(output_path.parent.glob(".concat_*.txt"))
+
+    def test_concatenate_scenes_escapes_paths(
+        self, video_service: VideoService, tmp_path: Path
+    ) -> None:
+        """Apostrophes and Windows separators must survive ffconcat parsing."""
+        video = tmp_path / "Alice's scene.mp4"
+        video.write_bytes(b"video")
+        output_path = tmp_path / "nested" / "output.mp4"
+
+        def check_manifest(args: list[str], description: str) -> MagicMock:
+            manifest = Path(args[args.index("-i") + 1])
+            escaped = video.absolute().as_posix().replace("'", "'\\''")
+            assert manifest.read_text(encoding="utf-8") == f"file '{escaped}'\n"
+            return MagicMock(returncode=0)
+
+        with patch.object(video_service, "_run_ffmpeg", side_effect=check_manifest):
+            assert video_service.concatenate_scenes([video], output_path) == output_path
+
+        assert not list(output_path.parent.glob(".concat_*.txt"))
+
+    def test_concatenate_scenes_isolates_overlapping_manifests(
+        self, video_service: VideoService, tmp_path: Path
+    ) -> None:
+        """Overlapping jobs in the same directory must not overwrite manifests."""
+        first = tmp_path / "first.mp4"
+        second = tmp_path / "second.mp4"
+        manifests: list[Path] = []
+
+        def overlap(args: list[str], description: str) -> MagicMock:
+            manifest = Path(args[args.index("-i") + 1])
+            manifests.append(manifest)
+            original = manifest.read_text(encoding="utf-8")
+            if len(manifests) == 1:
+                video_service.concatenate_scenes([second], tmp_path / "second_out.mp4")
+                assert manifest.read_text(encoding="utf-8") == original
+            return MagicMock(returncode=0)
+
+        with patch.object(video_service, "_run_ffmpeg", side_effect=overlap):
+            video_service.concatenate_scenes([first], tmp_path / "first_out.mp4")
+
+        assert len(set(manifests)) == 2
+        assert all(not manifest.exists() for manifest in manifests)
+
+    def test_concatenate_scenes_cleans_manifest_after_failure(
+        self, video_service: VideoService, tmp_path: Path
+    ) -> None:
+        """Failed FFmpeg runs must not leave stale concat manifests."""
+        with (
+            patch.object(
+                video_service, "_run_ffmpeg", side_effect=FFmpegError("Concat failed")
+            ),
+            pytest.raises(FFmpegError),
+        ):
+            video_service.concatenate_scenes(
+                [tmp_path / "scene.mp4"], tmp_path / "output.mp4"
+            )
+
+        assert not list(tmp_path.glob(".concat_*.txt"))
 
     def test_add_background_music_success(self, video_service, tmp_path: Path) -> None:
         """Test adding background music."""
@@ -261,6 +338,24 @@ class TestVideoService:
             )
 
             assert result == output_path
+
+    def test_add_background_music_preserves_narration_volume(
+        self, video_service: VideoService, tmp_path: Path
+    ) -> None:
+        """amix must not normalize narration to half its original volume."""
+        video = tmp_path / "video.mp4"
+        music = tmp_path / "music.mp3"
+        video.write_bytes(b"video")
+        music.write_bytes(b"music")
+
+        with patch.object(video_service, "_run_ffmpeg") as mock_run:
+            video_service.add_background_music(video, music, tmp_path / "output.mp4")
+
+        args = mock_run.call_args.args[0]
+        audio_filter = args[args.index("-filter_complex") + 1]
+        assert "[1:a]volume=0.15[music]" in audio_filter
+        assert "duration=first" in audio_filter
+        assert "normalize=0" in audio_filter
 
     def test_add_background_music_missing_video(
         self, video_service, tmp_path: Path
@@ -402,9 +497,26 @@ class TestVideoService:
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = OSError("ffprobe not found")
 
-            result = video_service.get_video_duration(video_path)
+            with pytest.raises(ExternalToolError, match="Could not run FFprobe"):
+                video_service.get_video_duration(video_path)
 
-            assert result == 0.0
+    def test_get_video_duration_preserves_path_without_shell(
+        self, video_service: VideoService, tmp_path: Path
+    ) -> None:
+        """Unresolved ffprobe must receive filenames without shell expansion."""
+        video_service._ffprobe = "ffprobe"
+        video = tmp_path / "Alice's story & %PATH%.mp4"
+        with (
+            patch("faceless.utils.media.shutil.which", return_value=None),
+            patch("subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = MagicMock(returncode=0, stdout="12.5")
+
+            assert video_service.get_video_duration(video) == 12.5
+
+        assert mock_run.call_args.args[0][0] == "ffprobe"
+        assert mock_run.call_args.args[0][-1] == str(video)
+        assert mock_run.call_args.kwargs["shell"] is False
 
     def test_get_video_duration_nonzero_returncode(
         self, video_service, tmp_path: Path
@@ -415,12 +527,13 @@ class TestVideoService:
 
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
-                returncode=1, stdout="", stderr="File not found"
+                returncode=1, stdout="123.5", stderr="File not found"
             )
 
-            result = video_service.get_video_duration(video_path)
-
-            assert result == 0.0
+            with pytest.raises(ExternalToolError, match="probe failed") as exc_info:
+                video_service.get_video_duration(video_path)
+            assert exc_info.value.details["return_code"] == 1
+            assert exc_info.value.details["stdout"] == "123.5"
 
     def test_get_video_duration_timeout(self, video_service, tmp_path: Path) -> None:
         """Test getting video duration with timeout."""
@@ -432,9 +545,8 @@ class TestVideoService:
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = subprocess.TimeoutExpired(cmd="ffprobe", timeout=30)
 
-            result = video_service.get_video_duration(video_path)
-
-            assert result == 0.0
+            with pytest.raises(ExternalToolError, match="timed out"):
+                video_service.get_video_duration(video_path)
 
     def test_get_video_duration_invalid_output(
         self, video_service, tmp_path: Path
@@ -448,6 +560,19 @@ class TestVideoService:
                 returncode=0, stdout="not_a_number\n", stderr=""
             )
 
-            result = video_service.get_video_duration(video_path)
+            with pytest.raises(ExternalToolError, match="invalid duration"):
+                video_service.get_video_duration(video_path)
 
-            assert result == 0.0
+    def test_get_video_duration_configured_executable(
+        self, mock_settings: MagicMock, tmp_path: Path
+    ) -> None:
+        executable = str(tmp_path / "tools & %PATH%" / "probe.exe")
+        mock_settings.ffprobe_path = executable
+        service = VideoService()
+        video = tmp_path / "Alice's & %PATH%.mp4"
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="2.5", stderr="")
+            assert service.get_video_duration(video) == 2.5
+        assert mock_run.call_args.args[0][0] == executable
+        assert mock_run.call_args.args[0][-1] == str(video)
+        assert mock_run.call_args.kwargs["shell"] is False

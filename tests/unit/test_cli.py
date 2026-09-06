@@ -10,6 +10,8 @@ Tests cover:
 - Info command
 """
 
+import subprocess
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -17,6 +19,8 @@ import pytest
 from typer.testing import CliRunner
 
 from faceless.cli.commands import app
+from faceless.core.exceptions import AzureOpenAIError, ConfigurationError, PipelineError
+from faceless.core.models import JobResult
 
 runner = CliRunner()
 
@@ -58,7 +62,7 @@ class TestGenerateCommand:
     """Tests for generate command."""
 
     @pytest.fixture
-    def mock_pipeline(self):
+    def mock_pipeline(self) -> Iterator[tuple[MagicMock, MagicMock]]:
         """Mock settings and orchestrator for generate command."""
         with (
             patch("faceless.cli.commands.get_settings") as mock_settings,
@@ -71,9 +75,15 @@ class TestGenerateCommand:
             settings.ensure_directories = MagicMock()
             mock_settings.return_value = settings
 
-            # Mock orchestrator to return empty results
             orchestrator_instance = MagicMock()
-            orchestrator_instance.run.return_value = []
+            result = MagicMock(
+                success=True,
+                video_paths={"youtube": Path("video.mp4")},
+                duration_seconds=1.0,
+                script_path=Path("script.json"),
+                errors=[],
+            )
+            orchestrator_instance.run.return_value = [result]
             mock_orchestrator.return_value = orchestrator_instance
 
             yield settings, orchestrator_instance
@@ -131,13 +141,25 @@ class TestGenerateCommand:
 
         assert result.exit_code == 0
 
-    def test_generate_with_thumbnails_disabled(self, mock_pipeline) -> None:
+    def test_generate_with_thumbnails_disabled(
+        self, mock_pipeline: tuple[MagicMock, MagicMock]
+    ) -> None:
         """Test generate with thumbnails disabled."""
         with patch("faceless.cli.commands.setup_logging"):
-            # Use the correct flag format
-            result = runner.invoke(app, ["generate", "finance"])
+            result = runner.invoke(app, ["generate", "finance", "--no-thumbnails"])
 
         assert result.exit_code == 0
+        assert mock_pipeline[1].run.call_args.kwargs["thumbnails"] is False
+
+    def test_generate_with_subtitles_disabled(
+        self, mock_pipeline: tuple[MagicMock, MagicMock]
+    ) -> None:
+        """The documented subtitle opt-out must reach the pipeline."""
+        with patch("faceless.cli.commands.setup_logging"):
+            result = runner.invoke(app, ["generate", "finance", "--no-subtitles"])
+
+        assert result.exit_code == 0
+        assert mock_pipeline[1].run.call_args.kwargs["subtitles"] is False
 
     def test_generate_with_subtitles_flag(self, mock_pipeline) -> None:
         """Test generate with subtitles flag."""
@@ -153,6 +175,81 @@ class TestGenerateCommand:
         assert result.exit_code == 0
         assert "niche" in result.output.lower()
 
+    @pytest.mark.parametrize("outcome", ["empty", "failure", "partial"])
+    def test_generate_unsuccessful_exit_status(
+        self, mock_pipeline: tuple[MagicMock, MagicMock], outcome: str
+    ) -> None:
+        """Empty and partially failed runs must not report success to automation."""
+        _, orchestrator = mock_pipeline
+        successful = orchestrator.run.return_value[0]
+        failed = MagicMock(
+            success=False,
+            video_paths={},
+            duration_seconds=0.0,
+            script_path=Path("failed.json"),
+            errors=["Image generation failed"],
+        )
+        orchestrator.run.return_value = {
+            "empty": [],
+            "failure": [failed],
+            "partial": [successful, failed],
+        }[outcome]
+
+        with patch("faceless.cli.commands.setup_logging"):
+            result = runner.invoke(app, ["generate", "finance"])
+
+        assert result.exit_code == 1
+        assert "Pipeline failed:" not in result.output
+        if outcome == "empty":
+            assert "No scripts were processed" in result.output
+            assert "--script" in result.output
+        else:
+            assert "Image generation failed" in result.output
+        if outcome == "partial":
+            assert "video.mp4" in result.output
+
+    def test_generate_initialization_failure(
+        self, mock_pipeline: tuple[MagicMock, MagicMock]
+    ) -> None:
+        """Configuration errors during construction get a useful CLI message."""
+        with (
+            patch("faceless.cli.commands.setup_logging"),
+            patch(
+                "faceless.cli.commands.Orchestrator",
+                side_effect=ConfigurationError("Missing Azure configuration"),
+            ),
+        ):
+            result = runner.invoke(app, ["generate", "finance"])
+
+        assert result.exit_code == 1
+        assert "Missing Azure configuration" in result.output
+
+    def test_generate_lists_optional_artifacts(
+        self, mock_pipeline: tuple[MagicMock, MagicMock], tmp_path: Path
+    ) -> None:
+        """Users can find production scripts, thumbnails, and subtitle files."""
+        script_path = tmp_path / "production_script.json"
+        script_path.write_text("{}", encoding="utf-8")
+        mock_pipeline[1].run.return_value = [
+            JobResult(
+                success=True,
+                script_path=script_path,
+                video_paths={"youtube": Path("video.mp4")},
+                thumbnail_paths=[Path("thumb_v1.png")],
+                subtitle_paths={"srt": Path("captions.srt"), "vtt": Path("captions.vtt")},
+            )
+        ]
+
+        with patch("faceless.cli.commands.setup_logging"):
+            result = runner.invoke(app, ["generate", "finance"])
+
+        assert result.exit_code == 0
+        assert "Script:" in result.output
+        assert "Thumbnail:" in result.output
+        assert "thumb_v1.png" in result.output
+        assert "captions.srt" in result.output
+        assert "captions.vtt" in result.output
+
 
 class TestValidateCommand:
     """Tests for validate command."""
@@ -166,6 +263,8 @@ class TestValidateCommand:
             settings.log_json_format = False
             settings.azure_openai.is_configured = True
             settings.use_elevenlabs = False
+            settings.ffmpeg_path = "ffmpeg"
+            settings.ffprobe_path = "ffprobe"
             mock.return_value = settings
             yield settings
 
@@ -190,8 +289,11 @@ class TestValidateCommand:
             mock_run.return_value = MagicMock(returncode=0)
             result = runner.invoke(app, ["validate"])
 
-        # May pass or fail depending on FFmpeg, just check it runs
-        assert result.exit_code in [0, 1]
+        assert result.exit_code == 0
+        assert [call.args[0] for call in mock_run.call_args_list] == [
+            ["ffmpeg", "-version"],
+            ["ffprobe", "-version"],
+        ]
 
     def test_validate_unconfigured(self, mock_settings_unconfigured) -> None:
         """Test validate with unconfigured settings."""
@@ -204,6 +306,24 @@ class TestValidateCommand:
 
         # Should fail due to unconfigured Azure OpenAI
         assert result.exit_code == 1
+
+    def test_validate_uses_configured_executables(
+        self, mock_settings_configured: MagicMock
+    ) -> None:
+        """Preflight checks the same custom binaries used by production."""
+        mock_settings_configured.ffmpeg_path = r"C:\Media Tools\ffmpeg.exe"
+        mock_settings_configured.ffprobe_path = r"C:\Media Tools\ffprobe.exe"
+        with (
+            patch("faceless.cli.commands.setup_logging"),
+            patch("subprocess.run", return_value=MagicMock(returncode=0)) as run,
+        ):
+            result = runner.invoke(app, ["validate"])
+
+        assert result.exit_code == 0
+        assert [call.args[0] for call in run.call_args_list] == [
+            [mock_settings_configured.ffmpeg_path, "-version"],
+            [mock_settings_configured.ffprobe_path, "-version"],
+        ]
 
     def test_validate_with_elevenlabs(self) -> None:
         """Test validate with ElevenLabs enabled."""
@@ -250,6 +370,49 @@ class TestValidateCommand:
         """Test validate --help."""
         result = runner.invoke(app, ["validate", "--help"])
         assert result.exit_code == 0
+
+    def test_validate_enabled_elevenlabs_requires_key(
+        self, mock_settings_configured: MagicMock
+    ) -> None:
+        """An enabled but unconfigured narration provider is a validation failure."""
+        mock_settings_configured.use_elevenlabs = True
+        mock_settings_configured.elevenlabs.is_configured = False
+        with (
+            patch("faceless.cli.commands.setup_logging"),
+            patch("subprocess.run", return_value=MagicMock(returncode=0)),
+        ):
+            result = runner.invoke(app, ["validate"])
+
+        assert result.exit_code == 1
+        assert "Missing API key" in result.output
+        assert "Configuration is valid" not in result.output
+
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            FileNotFoundError("ffprobe missing"),
+            subprocess.TimeoutExpired("ffprobe", 5),
+            MagicMock(returncode=1),
+        ],
+    )
+    def test_validate_ffprobe_unavailable(
+        self,
+        mock_settings_configured: MagicMock,
+        failure: OSError | subprocess.TimeoutExpired | MagicMock,
+    ) -> None:
+        """FFmpeg alone is insufficient: audio/video probing must also work."""
+        with (
+            patch("faceless.cli.commands.setup_logging"),
+            patch(
+                "subprocess.run",
+                side_effect=[MagicMock(returncode=0), failure],
+            ),
+        ):
+            result = runner.invoke(app, ["validate"])
+
+        assert result.exit_code == 1
+        assert "FFprobe" in result.output
+        assert "Configuration is valid" not in result.output
 
 
 class TestInitCommand:
@@ -383,7 +546,7 @@ class TestGenerateCommandPipeline:
         """Mock orchestrator throwing exception."""
         with patch("faceless.cli.commands.Orchestrator") as mock:
             orchestrator = MagicMock()
-            orchestrator.run.side_effect = Exception("Pipeline error")
+            orchestrator.run.side_effect = PipelineError("Pipeline error")
             mock.return_value = orchestrator
             yield orchestrator
 
@@ -422,7 +585,7 @@ class TestGenerateCommandPipeline:
 
             result = runner.invoke(app, ["generate", "finance"])
 
-            assert result.exit_code == 0  # Still exits 0, shows failure in output
+            assert result.exit_code == 1
             assert "failed" in result.output.lower() or "Failed" in result.output
 
     def test_generate_pipeline_exception(self, mock_orchestrator_exception) -> None:
@@ -496,6 +659,7 @@ class TestValidateTestConnections:
 
             assert result.exit_code == 0
             assert "Connected" in result.output
+            mock_client.__exit__.assert_called_once()
 
     def test_validate_test_connections_failure(self) -> None:
         """Test validate with failed test connections."""
@@ -521,7 +685,9 @@ class TestValidateTestConnections:
 
             result = runner.invoke(app, ["validate", "--test-connections"])
 
-            assert result.exit_code == 0
+            assert result.exit_code == 1
+            assert "Configuration is valid" not in result.output
+            mock_client.__exit__.assert_called_once()
             assert (
                 "failed" in result.output.lower()
                 or "Connection failed" in result.output
@@ -545,14 +711,37 @@ class TestValidateTestConnections:
             mock_settings.return_value = settings
             mock_run.return_value = MagicMock(returncode=0)
 
-            mock_client_class.side_effect = Exception("Connection error")
+            mock_client_class.side_effect = AzureOpenAIError("Connection error")
 
             result = runner.invoke(app, ["validate", "--test-connections"])
 
-            assert result.exit_code == 0
+            assert result.exit_code == 1
+            assert "Configuration is valid" not in result.output
             assert (
                 "error" in result.output.lower() or "Connection error" in result.output
             )
+
+    def test_validate_connection_error_closes_client(self) -> None:
+        """A failed request both releases the client and fails validation."""
+        with (
+            patch("faceless.cli.commands.get_settings") as mock_settings,
+            patch("faceless.cli.commands.setup_logging"),
+            patch("subprocess.run", return_value=MagicMock(returncode=0)),
+            patch(
+                "faceless.clients.azure_openai.AzureOpenAIClient"
+            ) as mock_client_class,
+        ):
+            settings = mock_settings.return_value
+            settings.azure_openai.is_configured = True
+            settings.use_elevenlabs = False
+            client = mock_client_class.return_value
+            client.test_connection.side_effect = AzureOpenAIError("Request failed")
+
+            result = runner.invoke(app, ["validate", "--test-connections"])
+
+        assert result.exit_code == 1
+        assert "Request failed" in result.output
+        client.__exit__.assert_called_once()
 
 
 class TestResearchCommand:

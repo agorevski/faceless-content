@@ -14,6 +14,7 @@ from faceless.core.enums import Niche, Voice
 from faceless.core.exceptions import TTSGenerationError
 from faceless.core.models import Checkpoint, Scene, Script
 from faceless.utils.logging import LoggerMixin
+from faceless.utils.media import probe_media_duration
 
 
 class TTSService(LoggerMixin):
@@ -253,69 +254,11 @@ class TTSService(LoggerMixin):
 
         Returns:
             Duration in seconds
+
+        Raises:
+            ExternalToolError: If FFprobe fails or returns invalid timing.
         """
-        import shutil
-        import subprocess
-
-        # Resolve ffprobe path (find in PATH if needed)
-        ffprobe = self._settings.ffprobe_path
-        use_shell = False
-
-        if not (Path(ffprobe).is_absolute() or "/" in ffprobe or "\\" in ffprobe):
-            resolved = shutil.which(ffprobe)
-            if resolved:
-                ffprobe = resolved
-            else:
-                # Fall back to shell=True on Windows
-                use_shell = True
-
-        try:
-            if use_shell:
-                # Use shell command for Windows compatibility
-                cmd = f'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "{audio_path}"'
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                    shell=True,
-                )
-            else:
-                result = subprocess.run(
-                    [
-                        ffprobe,
-                        "-v",
-                        "error",
-                        "-show_entries",
-                        "format=duration",
-                        "-of",
-                        "default=noprint_wrappers=1:nokey=1",
-                        str(audio_path),
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                )
-
-            if result.returncode != 0:
-                self.logger.warning(
-                    "ffprobe failed",
-                    path=str(audio_path),
-                    stderr=result.stderr[:200] if result.stderr else None,
-                )
-                return 0.0
-
-            stdout = result.stdout.strip()
-            if not stdout:
-                return 0.0
-            return float(stdout)
-        except Exception as e:
-            self.logger.warning(
-                "Could not get audio duration",
-                path=str(audio_path),
-                error=str(e),
-            )
-            return 0.0
+        return probe_media_duration(audio_path, self._settings.ffprobe_path)
 
     def update_scene_durations(self, script: Script) -> None:
         """
@@ -323,14 +266,16 @@ class TTSService(LoggerMixin):
 
         Args:
             script: Script with audio_path set on scenes
+
+        Raises:
+            ExternalToolError: If a scene's audio cannot be measured.
         """
         for scene in script.scenes:
-            if scene.audio_path and scene.audio_path.exists():
+            if scene.audio_path is not None:
                 duration = self.get_audio_duration(scene.audio_path)
-                if duration > 0:
-                    scene.duration_estimate = duration
-                    self.logger.debug(
-                        "Updated scene duration",
-                        scene_number=scene.scene_number,
-                        duration=duration,
-                    )
+                scene.duration_estimate = duration
+                self.logger.debug(
+                    "Updated scene duration",
+                    scene_number=scene.scene_number,
+                    duration=duration,
+                )

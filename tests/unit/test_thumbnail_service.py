@@ -9,6 +9,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from faceless.clients.azure_openai import AzureOpenAIClient
+from faceless.core.exceptions import ImageGenerationError
+
 # =============================================================================
 # Thumbnail Template Tests
 # =============================================================================
@@ -165,7 +168,7 @@ class TestGenerateThumbnailPrompt:
 class TestGenerateThumbnail:
     """Tests for thumbnail image generation."""
 
-    @patch("faceless.services.thumbnail_service.httpx.Client")
+    @patch("faceless.services.thumbnail_service.AzureOpenAIClient")
     @patch("faceless.services.thumbnail_service.get_settings")
     def test_generate_thumbnail_success(
         self, mock_settings: MagicMock, mock_client_class: MagicMock, tmp_path: Path
@@ -174,24 +177,8 @@ class TestGenerateThumbnail:
         from faceless.services.thumbnail_service import generate_thumbnail
 
         mock_settings.return_value.output_base_dir = tmp_path
-        mock_settings.return_value.azure_openai.endpoint = (
-            "https://test.openai.azure.com/"
-        )
-        mock_settings.return_value.azure_openai.api_key = "test-key"
-        mock_settings.return_value.azure_openai.image_deployment = "gpt-image-1"
-        mock_settings.return_value.azure_openai.image_api_version = "2024-02-01"
-
-        # Mock the API response
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "data": [{"b64_json": "dGVzdGltYWdl"}]  # base64 for "testimage"
-        }
-        mock_response.raise_for_status = MagicMock()
-
-        mock_client = MagicMock()
-        mock_client.post.return_value = mock_response
-        mock_client.__enter__ = MagicMock(return_value=mock_client)
-        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client = MagicMock(spec=AzureOpenAIClient)
+        mock_client.generate_image.return_value = b"testimage"
         mock_client_class.return_value = mock_client
 
         result = generate_thumbnail(
@@ -203,6 +190,11 @@ class TestGenerateThumbnail:
 
         assert result.exists()
         assert result.name == "test_thumb.png"
+        assert result.read_bytes() == b"testimage"
+        mock_client.generate_image.assert_called_once_with(
+            "Test prompt", size="1536x1024"
+        )
+        mock_client.__exit__.assert_called_once()
 
     @patch("faceless.services.thumbnail_service.get_settings")
     def test_generate_thumbnail_skips_existing(
@@ -227,7 +219,7 @@ class TestGenerateThumbnail:
         assert result == existing
         assert result.read_bytes() == b"existing image"
 
-    @patch("faceless.services.thumbnail_service.httpx.Client")
+    @patch("faceless.services.thumbnail_service.AzureOpenAIClient")
     @patch("faceless.services.thumbnail_service.get_settings")
     def test_generate_thumbnail_saves_prompt(
         self, mock_settings: MagicMock, mock_client_class: MagicMock, tmp_path: Path
@@ -236,21 +228,8 @@ class TestGenerateThumbnail:
         from faceless.services.thumbnail_service import generate_thumbnail
 
         mock_settings.return_value.output_base_dir = tmp_path
-        mock_settings.return_value.azure_openai.endpoint = (
-            "https://test.openai.azure.com/"
-        )
-        mock_settings.return_value.azure_openai.api_key = "test-key"
-        mock_settings.return_value.azure_openai.image_deployment = "gpt-image-1"
-        mock_settings.return_value.azure_openai.image_api_version = "2024-02-01"
-
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"data": [{"b64_json": "dGVzdA=="}]}
-        mock_response.raise_for_status = MagicMock()
-
-        mock_client = MagicMock()
-        mock_client.post.return_value = mock_response
-        mock_client.__enter__ = MagicMock(return_value=mock_client)
-        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client = MagicMock(spec=AzureOpenAIClient)
+        mock_client.generate_image.return_value = b"test"
         mock_client_class.return_value = mock_client
 
         result = generate_thumbnail(
@@ -264,48 +243,63 @@ class TestGenerateThumbnail:
         assert prompt_file.exists()
         assert prompt_file.read_text() == "My test prompt"
 
-    @patch("faceless.services.thumbnail_service.httpx.Client")
-    @patch("faceless.services.thumbnail_service.get_settings")
-    def test_generate_thumbnail_handles_url_response(
-        self, mock_settings: MagicMock, mock_client_class: MagicMock, tmp_path: Path
+    def test_generate_thumbnail_reuses_shared_client(
+        self, tmp_path: Path
     ) -> None:
-        """Test handling of URL-based image response."""
+        """The shared client owns download/error handling and its own lifecycle."""
         from faceless.services.thumbnail_service import generate_thumbnail
 
-        mock_settings.return_value.output_base_dir = tmp_path
-        mock_settings.return_value.azure_openai.endpoint = (
-            "https://test.openai.azure.com/"
-        )
-        mock_settings.return_value.azure_openai.api_key = "test-key"
-        mock_settings.return_value.azure_openai.image_deployment = "gpt-image-1"
-        mock_settings.return_value.azure_openai.image_api_version = "2024-02-01"
-
-        # First call returns URL
-        mock_response1 = MagicMock()
-        mock_response1.json.return_value = {
-            "data": [{"url": "https://example.com/image.png"}]
-        }
-        mock_response1.raise_for_status = MagicMock()
-
-        # Second call gets the image
-        mock_response2 = MagicMock()
-        mock_response2.content = b"image bytes"
-
-        mock_client = MagicMock()
-        mock_client.post.return_value = mock_response1
-        mock_client.get.return_value = mock_response2
-        mock_client.__enter__ = MagicMock(return_value=mock_client)
-        mock_client.__exit__ = MagicMock(return_value=False)
-        mock_client_class.return_value = mock_client
+        client = MagicMock(spec=AzureOpenAIClient)
+        client.generate_image.return_value = b"image bytes"
 
         result = generate_thumbnail(
             prompt="Test",
             niche="scary-stories",
-            output_name="url_test",
+            output_name="shared",
             output_dir=tmp_path,
+            size="1024x1024",
+            client=client,
         )
 
-        assert result.exists()
+        assert result.read_bytes() == b"image bytes"
+        client.generate_image.assert_called_once_with("Test", size="1024x1024")
+        client.close.assert_not_called()
+        client.__exit__.assert_not_called()
+
+    def test_generate_thumbnail_replaces_empty_cached_file(self, tmp_path: Path) -> None:
+        """An interrupted, empty image file must not suppress generation."""
+        from faceless.services.thumbnail_service import generate_thumbnail
+
+        existing = tmp_path / "empty.png"
+        existing.touch()
+        client = MagicMock(spec=AzureOpenAIClient)
+        client.generate_image.return_value = b"image"
+
+        result = generate_thumbnail(
+            "Prompt", "finance", "empty", tmp_path, client=client
+        )
+
+        assert result.read_bytes() == b"image"
+        client.generate_image.assert_called_once()
+
+    @pytest.mark.parametrize("empty_response", [False, True])
+    def test_generate_thumbnail_failure_does_not_save_image(
+        self, tmp_path: Path, empty_response: bool
+    ) -> None:
+        """A failed or empty API response never becomes a cached PNG."""
+        from faceless.services.thumbnail_service import generate_thumbnail
+
+        with patch("faceless.services.thumbnail_service.AzureOpenAIClient") as factory:
+            client = factory.return_value
+            if empty_response:
+                client.generate_image.return_value = b""
+            else:
+                client.generate_image.side_effect = ImageGenerationError("API failed")
+            with pytest.raises(ImageGenerationError):
+                generate_thumbnail("Prompt", "finance", "failed", tmp_path)
+
+        assert not (tmp_path / "failed.png").exists()
+        client.__exit__.assert_called_once()
 
 
 # =============================================================================
@@ -382,7 +376,7 @@ class TestGenerateThumbnailVariants:
         # First succeeds, second fails, third succeeds
         mock_generate.side_effect = [
             tmp_path / "thumb1.png",
-            Exception("API Error"),
+            ImageGenerationError("API Error"),
             tmp_path / "thumb3.png",
         ]
 

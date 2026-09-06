@@ -5,6 +5,7 @@ This module provides the main Orchestrator class that coordinates all services
 to produce complete videos from scripts.
 """
 
+import json
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -12,16 +13,16 @@ from uuid import uuid4
 from faceless.clients.azure_openai import AzureOpenAIClient
 from faceless.config import get_settings
 from faceless.core.enums import JobStatus, Niche, Platform
-from faceless.core.exceptions import PipelineError
+from faceless.core.exceptions import CheckpointError, FacelessError, PipelineError
 from faceless.core.models import (
     Checkpoint,
-    Job,
-    JobConfig,
     JobResult,
     Script,
 )
 from faceless.services.enhancer_service import EnhancerService
 from faceless.services.image_service import ImageService
+from faceless.services.subtitle_service import create_subtitles_from_script
+from faceless.services.thumbnail_service import generate_thumbnail_variants
 from faceless.services.tts_service import TTSService
 from faceless.services.video_service import VideoService
 from faceless.utils.logging import LoggerMixin, bind_context, clear_context
@@ -173,96 +174,114 @@ class Orchestrator(LoggerMixin):
         start_time = datetime.now()
         errors: list[str] = []
         video_paths: dict[str, Path] = {}
+        thumbnail_paths: list[Path] = []
+        subtitle_paths: dict[str, Path] = {}
+        production_path: Path | None = None
 
         # Set up logging context
         bind_context(script_title=script.safe_title, niche=script.niche.value)
 
-        # Load or create checkpoint
-        checkpoint = self._load_or_create_checkpoint(script)
+        checkpoint: Checkpoint | None = None
 
         try:
+            checkpoint = self._load_or_create_checkpoint(script)
             # Step 1: Enhance script (optional) - BLOCKING
-            if enhance and "enhance" not in checkpoint.completed_steps:
+            if "enhance" in checkpoint.completed_steps:
+                if checkpoint.enhanced_script is None:
+                    raise CheckpointError(
+                        "Completed enhancement has no script snapshot; "
+                        "cannot safely resume existing assets"
+                    )
+                if checkpoint.enhanced_script.niche != script.niche:
+                    raise CheckpointError("Enhanced script snapshot has a different niche")
+                script = checkpoint.enhanced_script.model_copy(deep=True)
+                self.logger.info("Restored enhanced script from checkpoint")
+            elif checkpoint.enhanced_script is not None:
+                raise CheckpointError("Enhanced script snapshot has no completion marker")
+            elif enhance:
                 self.logger.info("Starting script enhancement...")
                 checkpoint.status = JobStatus.ENHANCING
 
-                try:
-                    enhanced_script = self._enhancer_service.enhance_script(script)
-                    # Update script reference with enhanced version
-                    script = enhanced_script
-                    checkpoint.completed_steps.append("enhance")
-                    self._save_checkpoint(checkpoint, script)
-                    self.logger.info(
-                        "Script enhancement completed",
-                        scene_count=len(script.scenes),
-                    )
-                except Exception as e:
-                    self.logger.warning(
-                        "Script enhancement failed, continuing with original",
-                        error=str(e),
-                    )
-                    errors.append(f"Enhancement: {e}")
-            elif enhance:
-                self.logger.info("Skipping enhancement (already completed)")
-
-            # Step 2: Generate images (with parallel processing)
-            if "images" not in checkpoint.completed_steps:
-                self.logger.info(
-                    "Starting image generation...",
-                    scene_count=len(script.scenes),
-                    platforms=[p.value for p in platforms],
+                enhanced_script = self._enhancer_service.enhance_script(
+                    script.model_copy(deep=True)
                 )
-                checkpoint.status = JobStatus.GENERATING_IMAGES
-
-                for platform in platforms:
-                    try:
-                        generated_count = self._image_service.generate_for_script(
-                            script=script,
-                            platform=platform,
-                            checkpoint=checkpoint,
-                        )
-                        self.logger.info(
-                            "Image generation completed for platform",
-                            platform=platform.value,
-                            images_generated=(
-                                len(generated_count) if generated_count else 0
-                            ),
-                        )
-                    except Exception as e:
-                        errors.append(f"Image generation ({platform.value}): {e}")
-
-                checkpoint.completed_steps.append("images")
+                if enhanced_script.niche != script.niche:
+                    raise PipelineError("Enhancement cannot change the script niche")
+                script = Script.model_validate(enhanced_script.model_dump())
+                # A newly enhanced script must not reuse the original script's assets.
+                checkpoint.completed_steps = ["enhance"]
+                checkpoint.images_generated.clear()
+                checkpoint.audio_generated.clear()
+                checkpoint.videos_generated.clear()
+                checkpoint.enhanced_script = script.model_copy(deep=True)
                 self._save_checkpoint(checkpoint, script)
-                self.logger.info("All image generation completed")
-            else:
-                self.logger.info("Skipping image generation (already completed)")
-
-            # Step 3: Generate audio
-            if "audio" not in checkpoint.completed_steps:
                 self.logger.info(
-                    "Starting audio generation...",
+                    "Script enhancement completed",
                     scene_count=len(script.scenes),
                 )
-                checkpoint.status = JobStatus.GENERATING_AUDIO
+            bind_context(script_title=script.safe_title)
 
+            # Services restore scene paths from cached files and retry missing assets.
+            checkpoint.status = JobStatus.GENERATING_IMAGES
+            if "images" in checkpoint.completed_steps:
+                checkpoint.completed_steps.remove("images")
+            platform_images: dict[Platform, list[Path | None]] = {}
+
+            for platform in platforms:
                 try:
-                    self._tts_service.generate_for_script(
+                    generated_paths = self._image_service.generate_for_script(
                         script=script,
+                        platform=platform,
                         checkpoint=checkpoint,
                     )
-                    # Update durations based on actual audio
-                    self._tts_service.update_scene_durations(script)
-                    self.logger.info("Audio generation completed")
+                    if len(generated_paths) != len(script.scenes):
+                        raise PipelineError(
+                            f"Expected {len(script.scenes)} images, "
+                            f"received {len(generated_paths)}"
+                        )
+                    platform_images[platform] = [
+                        scene.image_path for scene in script.scenes
+                    ]
+                    self.logger.info(
+                        "Image generation completed for platform",
+                        platform=platform.value,
+                        images_generated=len(generated_paths),
+                    )
                 except Exception as e:
-                    errors.append(f"Audio generation: {e}")
+                    errors.append(f"Image generation ({platform.value}): {e}")
 
+            if len(platform_images) == len(set(platforms)):
+                checkpoint.completed_steps.append("images")
+            self._save_checkpoint(checkpoint, script)
+
+            # Step 3: Generate or restore audio, including measured durations.
+            checkpoint.status = JobStatus.GENERATING_AUDIO
+            if "audio" in checkpoint.completed_steps:
+                checkpoint.completed_steps.remove("audio")
+            audio_ready = False
+            try:
+                audio_paths = self._tts_service.generate_for_script(
+                    script=script,
+                    checkpoint=checkpoint,
+                )
+                if len(audio_paths) != len(script.scenes):
+                    raise PipelineError(
+                        f"Expected {len(script.scenes)} audio files, "
+                        f"received {len(audio_paths)}"
+                    )
+                self._tts_service.update_scene_durations(script)
+                audio_ready = True
                 checkpoint.completed_steps.append("audio")
-                self._save_checkpoint(checkpoint, script)
-            else:
-                self.logger.info("Skipping audio generation (already completed)")
+                self.logger.info("Audio generation completed")
+            except Exception as e:
+                errors.append(f"Audio generation: {e}")
+            self._save_checkpoint(checkpoint, script)
 
             # Step 4: Assemble videos
-            if "videos" not in checkpoint.completed_steps:
+            videos_completed = "videos" in checkpoint.completed_steps
+            if videos_completed:
+                checkpoint.completed_steps.remove("videos")
+            if audio_ready:
                 self.logger.info(
                     "Starting video assembly...",
                     platforms=[p.value for p in platforms],
@@ -271,7 +290,20 @@ class Orchestrator(LoggerMixin):
                 video_errors: list[str] = []
 
                 for platform in platforms:
+                    if platform not in platform_images:
+                        continue
                     try:
+                        for scene, image_path in zip(
+                            script.scenes, platform_images[platform], strict=True
+                        ):
+                            scene.image_path = image_path
+                        existing_output = (
+                            self._settings.get_final_output_dir(script.niche)
+                            / f"{script.niche.value}_{script.safe_title}_{platform.value}.mp4"
+                        )
+                        if videos_completed and existing_output.is_file():
+                            video_paths[platform.value] = existing_output
+                            continue
                         path = self._video_service.assemble_video(
                             script=script,
                             platform=platform,
@@ -289,7 +321,7 @@ class Orchestrator(LoggerMixin):
                         errors.append(f"Video assembly ({platform.value}): {e}")
 
                 # Only mark complete if NO video assembly errors
-                if not video_errors:
+                if not video_errors and len(video_paths) == len(set(platforms)):
                     checkpoint.completed_steps.append("videos")
                     self.logger.info("All video assembly completed")
                 else:
@@ -298,34 +330,87 @@ class Orchestrator(LoggerMixin):
                         error_count=len(video_errors),
                     )
             else:
-                self.logger.info("Skipping video assembly (already completed)")
+                self.logger.warning("Skipping video assembly: audio is incomplete")
 
-            # Step 5: Generate thumbnails (optional)
-            if (
-                thumbnails
-                and not errors
-                and "thumbnails" not in checkpoint.completed_steps
-            ):
+            if video_paths:
+                script.output_paths = video_paths.copy()
+                candidate_path = (
+                    self._settings.get_final_output_dir(script.niche)
+                    / f"{script.safe_title}_script.json"
+                )
+                try:
+                    script.to_json_file(candidate_path)
+                    production_path = candidate_path
+                except (OSError, ValueError) as e:
+                    self.logger.error("Production script could not be saved", error=str(e))
+                    errors.append(f"Production script: {e}")
+
+            # Step 5: Reuse existing thumbnails and retry missing variants.
+            if thumbnails and video_paths:
+                if "thumbnails" in checkpoint.completed_steps:
+                    checkpoint.completed_steps.remove("thumbnails")
                 self.logger.info("Starting thumbnail generation...")
                 checkpoint.status = JobStatus.GENERATING_THUMBNAILS
-                # TODO: Implement thumbnail generation
-                checkpoint.completed_steps.append("thumbnails")
-                self.logger.info("Thumbnail generation completed")
+                try:
+                    variant_count = 3
+                    generated_thumbnails = generate_thumbnail_variants(
+                        title=script.title,
+                        niche=script.niche.value,
+                        base_name=script.safe_title,
+                        output_dir=(
+                            self._settings.get_images_dir(script.niche)
+                            / script.safe_title / "thumbnails"
+                        ),
+                        num_variants=variant_count,
+                        client=self._client,
+                    )
+                    thumbnail_paths = [
+                        path for path in generated_thumbnails
+                        if path is not None and path.is_file() and path.stat().st_size > 0
+                    ]
+                    if len(set(thumbnail_paths)) != variant_count:
+                        raise PipelineError(
+                            f"Expected {variant_count} thumbnails, "
+                            f"generated {len(set(thumbnail_paths))}"
+                        )
+                    checkpoint.completed_steps.append("thumbnails")
+                    self.logger.info("Thumbnail generation completed")
+                except (FacelessError, OSError, ValueError) as e:
+                    self.logger.error("Thumbnail generation failed", error=str(e))
+                    errors.append(f"Thumbnail generation: {e}")
+                self._save_checkpoint(checkpoint, script)
 
-            # Step 6: Generate subtitles (optional)
-            if (
-                subtitles
-                and not errors
-                and "subtitles" not in checkpoint.completed_steps
-            ):
+            # Step 6: Use measured narration durations, independent of thumbnail success.
+            if subtitles and video_paths:
+                if "subtitles" in checkpoint.completed_steps:
+                    checkpoint.completed_steps.remove("subtitles")
                 self.logger.info("Starting subtitle generation...")
                 checkpoint.status = JobStatus.GENERATING_SUBTITLES
-                # TODO: Implement subtitle generation
-                checkpoint.completed_steps.append("subtitles")
-                self.logger.info("Subtitle generation completed")
+                try:
+                    if production_path is None:
+                        raise PipelineError("Cannot create subtitles without the production script")
+                    srt_path, vtt_path = create_subtitles_from_script(
+                        production_path,
+                        script.niche.value,
+                        output_dir=(
+                            self._settings.get_audio_dir(script.niche) / script.safe_title
+                        ),
+                    )
+                    if not all(
+                        path.is_file() and path.stat().st_size > 0
+                        for path in (srt_path, vtt_path)
+                    ):
+                        raise PipelineError("Subtitle generation did not create both SRT and VTT files")
+                    subtitle_paths = {"srt": srt_path, "vtt": vtt_path}
+                    checkpoint.completed_steps.append("subtitles")
+                    self.logger.info("Subtitle generation completed")
+                except (FacelessError, OSError, ValueError) as e:
+                    self.logger.error("Subtitle generation failed", error=str(e))
+                    errors.append(f"Subtitle generation: {e}")
+                self._save_checkpoint(checkpoint, script)
 
             # Complete
-            checkpoint.status = JobStatus.COMPLETED
+            checkpoint.status = JobStatus.FAILED if errors else JobStatus.COMPLETED
             self._save_checkpoint(checkpoint, script)
 
             duration = (datetime.now() - start_time).total_seconds()
@@ -338,21 +423,32 @@ class Orchestrator(LoggerMixin):
 
             return JobResult(
                 success=len(errors) == 0,
-                script_path=self._settings.get_scripts_dir(script.niche)
-                / f"{script.safe_title}_script.json",
+                script_path=production_path or checkpoint.script_path,
                 video_paths=video_paths,
+                thumbnail_paths=thumbnail_paths,
+                subtitle_paths=subtitle_paths,
                 errors=errors,
                 duration_seconds=duration,
             )
 
         except Exception as e:
             self.logger.exception("Pipeline failed", error=str(e))
-            checkpoint.status = JobStatus.FAILED
-            self._save_checkpoint(checkpoint, script)
+            if checkpoint is not None:
+                checkpoint.status = JobStatus.FAILED
+                try:
+                    self._save_checkpoint(checkpoint, script)
+                except CheckpointError as checkpoint_error:
+                    self.logger.error(
+                        "Failed to save failed checkpoint", error=str(checkpoint_error)
+                    )
 
             return JobResult(
                 success=False,
-                errors=[str(e)],
+                script_path=production_path,
+                video_paths=video_paths,
+                thumbnail_paths=thumbnail_paths,
+                subtitle_paths=subtitle_paths,
+                errors=[*errors, str(e)],
                 duration_seconds=(datetime.now() - start_time).total_seconds(),
             )
 
@@ -363,8 +459,39 @@ class Orchestrator(LoggerMixin):
         """Load existing checkpoint or create new one."""
         checkpoint_dir = self._settings.get_checkpoints_dir(script.niche)
         checkpoint_path = checkpoint_dir / f"{script.safe_title}.checkpoint.json"
+        script_path = (
+            self._settings.get_scripts_dir(script.niche)
+            / f"{script.safe_title}_script.json"
+        )
 
-        if checkpoint_path.exists():
+        if self._settings.enable_checkpointing and not checkpoint_path.exists():
+            # Older runs saved under the enhanced title but retained the source path.
+            matches: list[Path] = []
+            for candidate in checkpoint_dir.glob("*.checkpoint.json"):
+                try:
+                    data = json.loads(candidate.read_text(encoding="utf-8"))
+                except (OSError, ValueError) as e:
+                    self.logger.warning(
+                        "Skipping unreadable legacy checkpoint",
+                        path=str(candidate),
+                        error=str(e),
+                    )
+                    continue
+                if (
+                    isinstance(data, dict)
+                    and isinstance(data.get("script_path"), str)
+                    and Path(data["script_path"]) == script_path
+                ):
+                    matches.append(candidate)
+            if len(matches) > 1:
+                raise CheckpointError(
+                    "Multiple checkpoints refer to the original script; "
+                    "cannot safely select an enhanced script snapshot"
+                )
+            if matches:
+                checkpoint_path = matches[0]
+
+        if self._settings.enable_checkpointing and checkpoint_path.exists():
             try:
                 checkpoint = Checkpoint.load(checkpoint_path)
                 self.logger.info(
@@ -372,28 +499,47 @@ class Orchestrator(LoggerMixin):
                     completed_steps=checkpoint.completed_steps,
                 )
                 return checkpoint
-            except Exception as e:
-                self.logger.warning(
-                    "Failed to load checkpoint, creating new one",
-                    error=str(e),
-                )
+            except (OSError, ValueError) as e:
+                raise CheckpointError(
+                    "Cannot load checkpoint or enhanced script snapshot",
+                    checkpoint_path=str(checkpoint_path),
+                ) from e
 
         # Create new checkpoint
         return Checkpoint(
             job_id=uuid4(),
-            script_path=self._settings.get_scripts_dir(script.niche)
-            / f"{script.safe_title}_script.json",
+            script_path=script_path,
             status=JobStatus.PENDING,
         )
 
     def _save_checkpoint(self, checkpoint: Checkpoint, script: Script) -> None:
-        """Save checkpoint to disk."""
+        """Atomically save progress and its snapshot under the original identity."""
         if not self._settings.enable_checkpointing:
             return
 
         checkpoint_dir = self._settings.get_checkpoints_dir(script.niche)
-        checkpoint_path = checkpoint_dir / f"{script.safe_title}.checkpoint.json"
-        checkpoint.save(checkpoint_path)
+        original_title = checkpoint.script_path.stem.removesuffix("_script")
+        checkpoint_path = checkpoint_dir / f"{original_title}.checkpoint.json"
+        pending_path = checkpoint_path.with_name(
+            f"{checkpoint_path.name}.{uuid4().hex}.pending"
+        )
+        try:
+            checkpoint.save(pending_path)
+            pending_path.replace(checkpoint_path)
+        except (OSError, ValueError) as e:
+            raise CheckpointError(
+                "Cannot persist checkpoint and enhanced script snapshot",
+                checkpoint_path=str(checkpoint_path),
+            ) from e
+        finally:
+            try:
+                pending_path.unlink(missing_ok=True)
+            except OSError as e:
+                self.logger.warning(
+                    "Could not remove pending checkpoint",
+                    path=str(pending_path),
+                    error=str(e),
+                )
 
     def run_single(
         self,

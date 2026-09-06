@@ -13,6 +13,7 @@ Tests cover:
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
 from faceless.core.enums import Niche, Platform, Voice
@@ -20,6 +21,7 @@ from faceless.core.exceptions import (
     AzureOpenAIError,
     ContentFilterError,
     ImageGenerationError,
+    RateLimitError,
     TTSGenerationError,
 )
 
@@ -140,6 +142,107 @@ class TestAzureOpenAIClient:
             client._handle_error_response(mock_response, "Test")
 
         assert "authentication" in str(exc_info.value).lower()
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            b"Bad request",
+            b"null",
+            b"[]",
+            b'{"error": null}',
+            b'{"error": "bad request"}',
+            b'{"error": {"code": null, "message": null}}',
+        ],
+    )
+    def test_handle_malformed_400_preserves_status(
+        self,
+        mock_settings: MagicMock,
+        mock_base_client: MagicMock,
+        body: bytes,
+    ) -> None:
+        from faceless.clients.azure_openai import AzureOpenAIClient
+
+        client = AzureOpenAIClient()
+        response = httpx.Response(400, content=body)
+
+        with pytest.raises(AzureOpenAIError) as exc_info:
+            client._handle_error_response(response, "Chat completion")
+
+        assert exc_info.value.details["status_code"] == 400
+        assert exc_info.value.details["response_body"] == body.decode()
+
+    def test_invalid_content_parameter_is_not_a_filter_error(
+        self, mock_settings: MagicMock, mock_base_client: MagicMock
+    ) -> None:
+        from faceless.clients.azure_openai import AzureOpenAIClient
+
+        client = AzureOpenAIClient()
+        response = httpx.Response(
+            400,
+            json={
+                "error": {
+                    "code": "invalid_request_error",
+                    "message": "Invalid type for messages[0].content: expected a string",
+                }
+            },
+        )
+
+        with pytest.raises(AzureOpenAIError) as exc_info:
+            client._handle_error_response(response, "Chat completion")
+
+        assert exc_info.value.details["error_code"] == "invalid_request_error"
+
+    def test_nested_azure_policy_error_is_classified(
+        self, mock_settings: MagicMock, mock_base_client: MagicMock
+    ) -> None:
+        from faceless.clients.azure_openai import AzureOpenAIClient
+
+        client = AzureOpenAIClient()
+        response = httpx.Response(
+            400,
+            json={
+                "error": {
+                    "code": "BadRequest",
+                    "message": "Request rejected",
+                    "innererror": {"code": "ResponsibleAIPolicyViolation"},
+                }
+            },
+        )
+
+        with pytest.raises(ContentFilterError) as exc_info:
+            client._handle_error_response(response, "Image generation")
+
+        assert exc_info.value.details["filter_reason"] == "ResponsibleAIPolicyViolation"
+
+    @pytest.mark.parametrize("operation", ["chat", "generate_image", "generate_speech"])
+    @pytest.mark.parametrize(
+        "error",
+        [
+            RateLimitError("Throttled", retry_after=17, service="AzureOpenAIClient"),
+            ContentFilterError("Filtered", filter_reason="content_filter"),
+        ],
+    )
+    def test_operations_preserve_actionable_client_errors(
+        self,
+        mock_settings: MagicMock,
+        mock_base_client: MagicMock,
+        operation: str,
+        error: RateLimitError | ContentFilterError,
+    ) -> None:
+        from faceless.clients.azure_openai import AzureOpenAIClient
+
+        client = AzureOpenAIClient()
+        client._post = MagicMock(side_effect=error)
+
+        with pytest.raises(type(error)) as exc_info:
+            if operation == "chat":
+                client.chat([{"role": "user", "content": "Test"}])
+            elif operation == "generate_image":
+                client.generate_image("Test")
+            else:
+                client.generate_speech("Test")
+
+        assert exc_info.value is error
 
     def test_handle_error_response_404(self, mock_settings, mock_base_client) -> None:
         """Test handling 404 not found error."""

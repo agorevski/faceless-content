@@ -12,6 +12,7 @@ from typing import Any
 
 from faceless.config import get_settings
 from faceless.utils.logging import get_logger
+from faceless.utils.media import probe_media_duration
 
 logger = get_logger(__name__)
 
@@ -72,22 +73,8 @@ def format_timestamp_vtt(seconds: float) -> str:
 
 
 def get_audio_duration(audio_path: str | Path) -> float:
-    """Get duration of audio file in seconds using FFprobe."""
-    cmd = [
-        "ffprobe",
-        "-v",
-        "error",
-        "-show_entries",
-        "format=duration",
-        "-of",
-        "default=noprint_wrappers=1:nokey=1",
-        str(audio_path),
-    ]
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        return float(result.stdout.strip())
-    except (subprocess.TimeoutExpired, ValueError):
-        return 60.0  # Default fallback
+    """Measure audio seconds, raising ExternalToolError for failed/invalid probes."""
+    return probe_media_duration(Path(audio_path), get_settings().ffprobe_path)
 
 
 def create_subtitles_from_script(

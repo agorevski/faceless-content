@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from faceless.core.enums import JobStatus, Niche, Voice
-from faceless.core.exceptions import TTSGenerationError
+from faceless.core.exceptions import ExternalToolError, TTSGenerationError
 from faceless.core.models import Checkpoint, Scene, Script
 
 
@@ -244,11 +244,10 @@ class TestTTSService:
         audio_path = tmp_path / "audio.mp3"
 
         with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = Exception("ffprobe error")
+            mock_run.side_effect = OSError("ffprobe error")
 
-            result = tts_service.get_audio_duration(audio_path)
-
-            assert result == 0.0
+            with pytest.raises(ExternalToolError, match="Could not run FFprobe"):
+                tts_service.get_audio_duration(audio_path)
 
     def test_update_scene_durations(self, tts_service, tmp_path: Path) -> None:
         """Test updating scene durations from audio."""
@@ -297,10 +296,11 @@ class TestTTSService:
         # Duration should remain unchanged
         assert scene.duration_estimate == 10.0
 
-    def test_update_scene_durations_skips_zero_duration(
-        self, tts_service, tmp_path: Path
+    @pytest.mark.parametrize("output", ["0", "-1", "nan", "inf", "-inf", "N/A", ""])
+    def test_update_scene_durations_rejects_invalid_duration(
+        self, tts_service, tmp_path: Path, output: str
     ) -> None:
-        """Test duration update skips when ffprobe returns 0."""
+        """Invalid measured timing aborts instead of silently retaining estimates."""
         audio_path = tmp_path / "scene_01.mp3"
         audio_path.write_bytes(b"audio")
 
@@ -319,9 +319,35 @@ class TestTTSService:
         )
 
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout="0.0\n", stderr="")
+            mock_run.return_value = MagicMock(returncode=0, stdout=output, stderr="")
 
-            tts_service.update_scene_durations(script)
+            with pytest.raises(ExternalToolError):
+                tts_service.update_scene_durations(script)
 
-            # Duration should remain unchanged when 0 returned
             assert scene.duration_estimate == 10.0
+
+    def test_update_scene_durations_rejects_missing_audio_file(
+        self, tts_service, sample_script: Script, tmp_path: Path
+    ) -> None:
+        """An assigned but missing audio file must not silently retain estimates."""
+        sample_script.scenes[0].audio_path = tmp_path / "missing.mp3"
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=1, stdout="", stderr="No such file"
+            )
+            with pytest.raises(ExternalToolError, match="probe failed"):
+                tts_service.update_scene_durations(sample_script)
+        mock_run.assert_called_once()
+
+    def test_get_audio_duration_uses_configured_executable(
+        self, tts_service, tmp_path: Path
+    ) -> None:
+        executable = str(tmp_path / "custom tools & %PATH%" / "probe.exe")
+        tts_service._settings.ffprobe_path = executable
+        audio = tmp_path / "Alice's & %PATH%.mp3"
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="1.25", stderr="")
+            assert tts_service.get_audio_duration(audio) == 1.25
+        assert mock_run.call_args.args[0][0] == executable
+        assert mock_run.call_args.args[0][-1] == str(audio)
+        assert mock_run.call_args.kwargs["shell"] is False

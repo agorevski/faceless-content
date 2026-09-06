@@ -20,6 +20,7 @@ from faceless.core.exceptions import (
     AzureOpenAIError,
     ContentFilterError,
     ImageGenerationError,
+    RateLimitError,
     TTSGenerationError,
 )
 
@@ -77,24 +78,39 @@ class AzureOpenAIClient(BaseHTTPClient):
     ) -> None:
         """Handle error responses from Azure OpenAI API."""
         if response.status_code == 400:
-            error_data = response.json().get("error", {})
-            error_code = error_data.get("code", "")
-            error_message = error_data.get("message", "Unknown error")
+            try:
+                body = response.json()
+            except ValueError:
+                body = {}
+            error_data = body.get("error", {}) if isinstance(body, dict) else {}
+            if not isinstance(error_data, dict):
+                error_data = {}
+            error_code = str(error_data.get("code") or "")
+            error_message = str(error_data.get("message") or "Unknown error")
+            inner_error = error_data.get("innererror")
+            inner_code = (
+                str(inner_error.get("code") or "")
+                if isinstance(inner_error, dict)
+                else ""
+            )
 
             # Check for content filter
             if (
                 "content_filter" in error_code.lower()
-                or "content" in error_message.lower()
+                or inner_code.lower() == "responsibleaipolicyviolation"
+                or "content policy" in error_message.lower()
+                or "content management policy" in error_message.lower()
             ):
                 raise ContentFilterError(
                     message=f"Content rejected by safety filter: {error_message}",
-                    filter_reason=error_code,
+                    filter_reason=inner_code or error_code,
                 )
 
             raise AzureOpenAIError(
                 message=f"{operation} failed: {error_message}",
                 status_code=response.status_code,
                 error_code=error_code,
+                response_body=response.text,
             )
 
         if response.status_code == 401:
@@ -194,7 +210,7 @@ class AzureOpenAIClient(BaseHTTPClient):
                     prompt=prompt,
                 )
 
-        except (ImageGenerationError, ContentFilterError):
+        except (ImageGenerationError, ContentFilterError, RateLimitError):
             raise
         except Exception as e:
             self.logger.error("Image generation failed", error=str(e))
@@ -281,7 +297,7 @@ class AzureOpenAIClient(BaseHTTPClient):
             content: str = result["choices"][0]["message"]["content"]
             return content
 
-        except AzureOpenAIError:
+        except (AzureOpenAIError, ContentFilterError, RateLimitError):
             raise
         except Exception as e:
             self.logger.error("Chat completion failed", error=str(e))
@@ -379,7 +395,7 @@ class AzureOpenAIClient(BaseHTTPClient):
 
             return response.content
 
-        except AzureOpenAIError:
+        except (AzureOpenAIError, ContentFilterError, RateLimitError):
             raise
         except Exception as e:
             self.logger.error("TTS generation failed", error=str(e))

@@ -311,6 +311,10 @@ class Checkpoint(BaseModel):
     job_id: UUID = Field(..., description="ID of the associated job")
     script_path: Path = Field(..., description="Path to the script file")
     status: JobStatus = Field(..., description="Status when checkpoint was created")
+    enhanced_script: Script | None = Field(
+        default=None,
+        description="Exact enhanced script used to generate this job's assets",
+    )
 
     # Progress tracking
     completed_steps: list[str] = Field(default_factory=list)

@@ -9,12 +9,14 @@ import shutil
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from uuid import uuid4
 
 from faceless.config import get_settings
 from faceless.core.enums import Platform
 from faceless.core.exceptions import FFmpegError, VideoAssemblyError
 from faceless.core.models import Checkpoint, Scene, Script
 from faceless.utils.logging import LoggerMixin
+from faceless.utils.media import probe_media_duration
 
 
 class VideoService(LoggerMixin):
@@ -83,23 +85,13 @@ class VideoService(LoggerMixin):
         Raises:
             FFmpegError: On FFmpeg failure
         """
-        # Build command - use shell=True on Windows if executable not resolved
-        use_shell = self._ffmpeg == "ffmpeg"  # Not resolved to full path
-
-        cmd: str | list[str]
-        if use_shell:
-            # Build command string for shell execution
-            cmd = "ffmpeg " + " ".join(
-                f'"{arg}"' if " " in arg else arg for arg in args
-            )
-        else:
-            cmd = [self._ffmpeg] + args
+        # Filtergraphs and filenames must reach FFmpeg without shell interpretation.
+        cmd = [self._ffmpeg, *args]
 
         self.logger.debug(
             "Running FFmpeg",
             description=description,
             command=str(cmd)[:100] + "...",
-            use_shell=use_shell,
         )
 
         try:
@@ -108,7 +100,7 @@ class VideoService(LoggerMixin):
                 capture_output=True,
                 text=True,
                 timeout=600,  # 10 minute timeout
-                shell=use_shell,
+                shell=False,
             )
 
             if result.returncode != 0:
@@ -120,7 +112,7 @@ class VideoService(LoggerMixin):
                 )
                 raise FFmpegError(
                     message=f"{description} failed",
-                    command=[cmd] if isinstance(cmd, str) else cmd,
+                    command=cmd,
                     return_code=result.returncode,
                     stderr=result.stderr,
                 )
@@ -130,12 +122,12 @@ class VideoService(LoggerMixin):
         except subprocess.TimeoutExpired as e:
             raise FFmpegError(
                 message=f"{description} timed out",
-                command=[cmd] if isinstance(cmd, str) else cmd,
+                command=cmd,
             ) from e
         except FileNotFoundError as e:
             raise FFmpegError(
                 message="FFmpeg not found. Ensure it is installed and in PATH.",
-                command=[cmd] if isinstance(cmd, str) else cmd,
+                command=cmd,
             ) from e
         except OSError as e:
             # Catch Windows-specific errors like WinError 87
@@ -147,7 +139,7 @@ class VideoService(LoggerMixin):
             )
             raise FFmpegError(
                 message=f"{description} failed with OS error: {e}",
-                command=[cmd] if isinstance(cmd, str) else cmd,
+                command=cmd,
             ) from e
 
     def create_scene_video(
@@ -268,13 +260,15 @@ class VideoService(LoggerMixin):
                 stage="concatenation",
             )
 
-        # Create concat file
-        concat_file = output_path.parent / ".concat_list.txt"
-        with open(concat_file, "w", encoding="utf-8") as f:
-            for video in scene_videos:
-                f.write(f"file '{video.absolute()}'\n")
-
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        concat_file = output_path.parent / f".concat_{uuid4().hex}.txt"
         try:
+            with concat_file.open("w", encoding="utf-8") as f:
+                for video in scene_videos:
+                    # ffconcat uses its own quoting rules, not shell quoting.
+                    escaped_path = video.absolute().as_posix().replace("'", "'\\''")
+                    f.write(f"file '{escaped_path}'\n")
+
             args = [
                 "-y",
                 "-f",
@@ -300,8 +294,7 @@ class VideoService(LoggerMixin):
 
         finally:
             # Clean up concat file
-            if concat_file.exists():
-                concat_file.unlink()
+            concat_file.unlink(missing_ok=True)
 
     def add_background_music(
         self,
@@ -342,7 +335,7 @@ class VideoService(LoggerMixin):
         # Mix audio: keep original audio and add music at lower volume
         filter_complex = (
             f"[1:a]volume={music_volume}[music];"
-            f"[0:a][music]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+            f"[0:a][music]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[aout]"
         )
 
         args = [
@@ -634,68 +627,8 @@ class VideoService(LoggerMixin):
 
         Returns:
             Duration in seconds
+
+        Raises:
+            ExternalToolError: If FFprobe fails or returns invalid timing.
         """
-        try:
-            # Use shell=True if ffprobe path wasn't resolved
-            use_shell = self._ffprobe == "ffprobe"
-
-            if use_shell:
-                cmd = f'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "{video_path}"'
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                    shell=True,
-                )
-            else:
-                result = subprocess.run(
-                    [
-                        self._ffprobe,
-                        "-v",
-                        "error",
-                        "-show_entries",
-                        "format=duration",
-                        "-of",
-                        "default=noprint_wrappers=1:nokey=1",
-                        str(video_path),
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                )
-
-            if result.returncode != 0:
-                self.logger.warning(
-                    "ffprobe returned non-zero exit code",
-                    path=str(video_path),
-                    returncode=result.returncode,
-                    stderr=result.stderr.strip() if result.stderr else None,
-                )
-                return 0.0
-
-            stdout = result.stdout.strip()
-            if not stdout:
-                return 0.0
-            return float(stdout)
-        except subprocess.TimeoutExpired:
-            self.logger.warning(
-                "ffprobe timed out",
-                path=str(video_path),
-            )
-            return 0.0
-        except ValueError as e:
-            self.logger.warning(
-                "Could not parse video duration",
-                path=str(video_path),
-                output=result.stdout.strip() if result.stdout else None,
-                error=str(e),
-            )
-            return 0.0
-        except OSError as e:
-            self.logger.warning(
-                "Could not run ffprobe",
-                path=str(video_path),
-                error=str(e),
-            )
-            return 0.0
+        return probe_media_duration(video_path, self._ffprobe)

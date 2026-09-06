@@ -59,6 +59,12 @@ AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-4o
 AZURE_OPENAI_TTS_DEPLOYMENT=gpt-4o-mini-tts
 ```
 
+Transient API failures are retried when `ENABLE_RETRY=true`. `MAX_RETRIES` controls
+additional attempts after the initial request; `0` disables retries. Retry waits
+use exponential backoff or `Retry-After`, capped at 60 seconds per wait. A timeout
+can occur after the server has processed a generation request, so retrying may
+incur an additional charge. Set `ENABLE_RETRY=false` to require manual retries.
+
 ### Basic Usage
 
 ```bash
@@ -73,7 +79,42 @@ faceless generate finance -c 3 -p youtube
 
 # Process a specific script with enhancement
 faceless generate scary-stories -s path/to/script.json --enhance
+
+# Generate video only, without additional thumbnail image requests or subtitles
+faceless generate finance -s path/to/script.json --no-thumbnails --no-subtitles
 ```
+
+`faceless validate` checks Azure configuration, the enabled narration provider,
+and both `ffmpeg` and `ffprobe`. With `--test-connections`, a failed Azure connection
+also causes a nonzero exit status.
+
+`faceless generate` exits with status `1` if any script fails or no scripts are
+processed, so scheduled jobs can detect failures. For an empty run, supply
+`--script` or place scripts in the niche's output `scripts` directory. Successful
+outputs from partially failed runs are still listed and retained.
+Use `--no-thumbnails` and `--no-subtitles` to disable optional outputs.
+
+By default, a successful video production also creates three thumbnail variants
+and SRT/VTT subtitles. Thumbnails use additional image-generation requests; existing
+nonempty variants are reused on retry. Subtitles use script narration and measured
+scene-audio durations, with estimated word timing rather than speech recognition.
+The CLI lists these artifacts and a production script saved alongside the final
+videos. That script records the narration, measured durations, and video paths
+without overwriting the source script.
+
+Optional-output failures leave successful videos and other artifacts intact, but
+return a failure status. A rerun retries missing thumbnail variants and recreates
+subtitle files even if an older checkpoint incorrectly marked them complete.
+
+Enhanced scripts are stored inside the checkpoint before asset generation starts.
+Resuming from the original script restores the same enhanced title, narration, and
+image prompts, even if `--enhance` is omitted on the rerun. Missing or invalid
+enhanced snapshots stop the job rather than mixing original text with enhanced
+assets. Checkpoint identity stays tied to the original script.
+
+Media timing errors also stop production: a missing or failing `ffprobe`, or an
+invalid duration, no longer silently substitutes a zero- or 60-second duration.
+Set `FFPROBE_PATH` when the binary is not available on `PATH`.
 
 ## 📁 Project Structure
 

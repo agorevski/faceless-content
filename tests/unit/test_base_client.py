@@ -10,6 +10,9 @@ Tests cover:
 - Context manager support
 """
 
+from collections.abc import Generator
+from datetime import datetime, timedelta, timezone
+from email.utils import format_datetime
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -20,6 +23,11 @@ from faceless.core.exceptions import ClientError, RateLimitError
 
 class TestBaseHTTPClient:
     """Tests for BaseHTTPClient."""
+
+    @pytest.fixture(autouse=True)
+    def retry_sleep(self) -> Generator[MagicMock, None, None]:
+        with patch("tenacity.nap.time.sleep") as sleep:
+            yield sleep
 
     @pytest.fixture
     def mock_settings(self):
@@ -75,6 +83,181 @@ class TestBaseHTTPClient:
         headers = {"Authorization": "Bearer token"}
         client = BaseHTTPClient(headers=headers)
         assert client._default_headers == headers
+
+    @pytest.mark.parametrize("status_code", [408, 429, 500, 502, 503, 504])
+    def test_request_retries_transient_response(
+        self,
+        mock_settings: MagicMock,
+        mock_httpx_client: MagicMock,
+        retry_sleep: MagicMock,
+        status_code: int,
+    ) -> None:
+        from faceless.clients.base import BaseHTTPClient
+
+        success = httpx.Response(200, content=b"success")
+        mock_httpx_client.return_value.request.side_effect = [
+            httpx.Response(status_code),
+            success,
+        ]
+        client = BaseHTTPClient(base_url="https://api.example.com")
+
+        assert client._post("/test", json={"input": "test"}) is success
+        assert client._client.request.call_count == 2
+        retry_sleep.assert_called_once_with(1)
+        assert (
+            client._client.request.call_args_list[0]
+            == client._client.request.call_args_list[1]
+        )
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            httpx.ReadTimeout("Timeout"),
+            httpx.ConnectError("Connection failed"),
+            httpx.RemoteProtocolError("Connection interrupted"),
+        ],
+    )
+    def test_request_retries_transport_failure(
+        self,
+        mock_settings: MagicMock,
+        mock_httpx_client: MagicMock,
+        error: httpx.RequestError,
+    ) -> None:
+        from faceless.clients.base import BaseHTTPClient
+
+        success = httpx.Response(200)
+        mock_httpx_client.return_value.request.side_effect = [error, success]
+        client = BaseHTTPClient(base_url="https://api.example.com")
+
+        assert client._get("/test") is success
+        assert client._client.request.call_count == 2
+
+    @pytest.mark.parametrize("status_code", [400, 401, 403, 404, 422])
+    def test_request_does_not_retry_permanent_response(
+        self,
+        mock_settings: MagicMock,
+        mock_httpx_client: MagicMock,
+        retry_sleep: MagicMock,
+        status_code: int,
+    ) -> None:
+        from faceless.clients.base import BaseHTTPClient
+
+        response = httpx.Response(status_code)
+        mock_httpx_client.return_value.request.return_value = response
+        client = BaseHTTPClient(base_url="https://api.example.com")
+
+        assert client._get("/test") is response
+        client._client.request.assert_called_once()
+        retry_sleep.assert_not_called()
+
+    @pytest.mark.parametrize("enable_retry,max_retries", [(False, 3), (True, 0)])
+    def test_request_respects_retry_disable_and_zero_override(
+        self,
+        mock_settings: MagicMock,
+        mock_httpx_client: MagicMock,
+        retry_sleep: MagicMock,
+        enable_retry: bool,
+        max_retries: int,
+    ) -> None:
+        from faceless.clients.base import BaseHTTPClient
+
+        mock_settings.enable_retry = enable_retry
+        response = httpx.Response(503)
+        mock_httpx_client.return_value.request.return_value = response
+        client = BaseHTTPClient(max_retries=max_retries)
+
+        assert client._max_retries == max_retries
+        assert client._get("https://api.example.com/test") is response
+        client._client.request.assert_called_once()
+        retry_sleep.assert_not_called()
+
+    def test_request_exhaustion_returns_last_response(
+        self,
+        mock_settings: MagicMock,
+        mock_httpx_client: MagicMock,
+        retry_sleep: MagicMock,
+    ) -> None:
+        from faceless.clients.base import BaseHTTPClient
+
+        response = httpx.Response(503)
+        mock_httpx_client.return_value.request.return_value = response
+        client = BaseHTTPClient(max_retries=2)
+
+        assert client._get("https://api.example.com/test") is response
+        assert client._client.request.call_count == 3
+        assert [call.args[0] for call in retry_sleep.call_args_list] == [1, 2]
+
+    def test_request_exhaustion_preserves_transport_cause(
+        self,
+        mock_settings: MagicMock,
+        mock_httpx_client: MagicMock,
+    ) -> None:
+        from faceless.clients.base import BaseHTTPClient
+
+        error = httpx.ConnectError("Connection failed")
+        mock_httpx_client.return_value.request.side_effect = error
+        client = BaseHTTPClient(max_retries=2)
+
+        with pytest.raises(ClientError) as exc_info:
+            client._get("https://api.example.com/test")
+
+        assert exc_info.value.__cause__ is error
+        assert client._client.request.call_count == 3
+
+    @pytest.mark.parametrize(
+        "header,expected",
+        [("invalid", None), ("1.5", None), ("", None), ("-1", 0), ("7", 7)],
+    )
+    def test_rate_limit_header_never_masks_error(
+        self,
+        mock_settings: MagicMock,
+        mock_httpx_client: MagicMock,
+        header: str,
+        expected: int | None,
+    ) -> None:
+        from faceless.clients.base import BaseHTTPClient
+
+        mock_httpx_client.return_value.request.return_value = httpx.Response(
+            429, headers={"Retry-After": header}
+        )
+        client = BaseHTTPClient(max_retries=0)
+
+        with pytest.raises(RateLimitError) as exc_info:
+            client._get("https://api.example.com/test")
+
+        assert exc_info.value.retry_after == expected
+
+    @pytest.mark.parametrize("header,expected_wait", [("7", 7), ("999", 60), ("bad", 1)])
+    def test_request_honors_bounded_retry_after(
+        self,
+        mock_settings: MagicMock,
+        mock_httpx_client: MagicMock,
+        retry_sleep: MagicMock,
+        header: str,
+        expected_wait: int,
+    ) -> None:
+        from faceless.clients.base import BaseHTTPClient
+
+        mock_httpx_client.return_value.request.side_effect = [
+            httpx.Response(429, headers={"Retry-After": header}),
+            httpx.Response(200),
+        ]
+        client = BaseHTTPClient()
+
+        assert client._get("https://api.example.com/test").status_code == 200
+        retry_sleep.assert_called_once_with(expected_wait)
+
+    def test_retry_after_supports_http_date(self) -> None:
+        from faceless.clients.base import BaseHTTPClient
+
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        response = httpx.Response(
+            429,
+            headers={"Retry-After": format_datetime(now + timedelta(seconds=30))},
+        )
+        with patch("faceless.clients.base.datetime") as clock:
+            clock.now.return_value = now
+            assert BaseHTTPClient._retry_after(response) == 30
 
     def test_build_url_with_path(self, mock_settings, mock_httpx_client) -> None:
         """Test URL building with relative path."""

@@ -5,9 +5,11 @@ This module defines all CLI commands using Typer.
 """
 
 import json
+import subprocess
 from pathlib import Path
 from typing import Annotated
 
+import httpx
 import typer
 from rich.console import Console
 from rich.panel import Panel
@@ -16,6 +18,7 @@ from rich.table import Table
 from faceless import __version__
 from faceless.config import get_settings
 from faceless.core.enums import Niche, Platform
+from faceless.core.exceptions import FacelessError
 from faceless.pipeline.orchestrator import Orchestrator
 from faceless.utils.logging import setup_logging
 
@@ -143,7 +146,7 @@ def generate(
     thumbnails: Annotated[
         bool,
         typer.Option(
-            "--thumbnails",
+            "--thumbnails/--no-thumbnails",
             "-t",
             help="Generate thumbnail variants",
         ),
@@ -151,7 +154,7 @@ def generate(
     subtitles: Annotated[
         bool,
         typer.Option(
-            "--subtitles",
+            "--subtitles/--no-subtitles",
             help="Generate subtitle files",
         ),
     ] = True,
@@ -199,12 +202,10 @@ def generate(
 
     console.print(f"\n[dim]Output directory: {settings.get_output_dir(niche)}[/]")
 
-    # Run the pipeline orchestrator
-    orchestrator = Orchestrator()
-
     console.print("\n[bold]Starting pipeline...[/]\n")
 
     try:
+        orchestrator = Orchestrator()
         results = orchestrator.run(
             niche=niche,
             platforms=platform,
@@ -250,19 +251,36 @@ def generate(
             console.print(f"[red]✗ {failed} video(s) failed[/]")
 
         # Show output locations
-        if results and any(r.video_paths for r in results):
+        if any(
+            r.video_paths or r.thumbnail_paths or r.subtitle_paths for r in results
+        ):
             console.print("\n[bold]Output files:[/]")
             for result in results:
+                if result.script_path and result.script_path.is_file():
+                    console.print(f"  [dim]Script:[/] {result.script_path}")
                 for plat, path in result.video_paths.items():
                     console.print(f"  [dim]{plat}:[/] {path}")
+                for path in result.thumbnail_paths:
+                    console.print(f"  [dim]Thumbnail:[/] {path}")
+                for subtitle_format, path in result.subtitle_paths.items():
+                    console.print(f"  [dim]{subtitle_format.upper()}:[/] {path}")
 
-    except Exception as e:
+    except (FacelessError, OSError, ValueError) as e:
         console.print(f"\n[red]✗ Pipeline failed: {e}[/]")
         if settings.debug:
             import traceback
 
             console.print(f"[dim]{traceback.format_exc()}[/]")
         raise typer.Exit(1) from None
+
+    if not results:
+        console.print(
+            "\n[red]No scripts were processed. Provide --script or add scripts "
+            "to the niche's scripts directory.[/]"
+        )
+        raise typer.Exit(1)
+    if failed:
+        raise typer.Exit(1)
 
 
 # =============================================================================
@@ -327,6 +345,7 @@ def validate(
     )
 
     # Check ElevenLabs (optional)
+    eleven_ok = True
     if settings.use_elevenlabs:
         eleven_ok = settings.elevenlabs.is_configured
         table.add_row(
@@ -341,28 +360,32 @@ def validate(
             "Not enabled (using Azure TTS)",
         )
 
-    # Check FFmpeg
-    import subprocess
+    tools_ok = True
+    for executable, label in (
+        (settings.ffmpeg_path, "FFmpeg"),
+        (settings.ffprobe_path, "FFprobe"),
+    ):
+        try:
+            result = subprocess.run(
+                [executable, "-version"],
+                capture_output=True,
+                timeout=5,
+            )
+            tool_ok = result.returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            tool_ok = False
 
-    try:
-        result = subprocess.run(
-            ["ffmpeg", "-version"],
-            capture_output=True,
-            timeout=5,
+        tools_ok = tools_ok and tool_ok
+        table.add_row(
+            label,
+            "[green]✓[/]" if tool_ok else "[red]✗[/]",
+            "Installed" if tool_ok else "Unavailable or failed to run",
         )
-        ffmpeg_ok = result.returncode == 0
-    except Exception:
-        ffmpeg_ok = False
-
-    table.add_row(
-        "FFmpeg",
-        "[green]✓[/]" if ffmpeg_ok else "[red]✗[/]",
-        "Installed" if ffmpeg_ok else "Not found in PATH",
-    )
 
     console.print(table)
 
     # Test connections if requested
+    connection_ok = True
     if test_connections:
         console.print("\n[bold]Testing API Connections...[/]")
 
@@ -371,15 +394,18 @@ def validate(
 
             try:
                 client = AzureOpenAIClient()
-                if client.test_connection():
+                with client:
+                    connection_ok = client.test_connection()
+                if connection_ok:
                     console.print("[green]✓[/] Azure OpenAI: Connected")
                 else:
                     console.print("[red]✗[/] Azure OpenAI: Connection failed")
-            except Exception as e:
+            except (FacelessError, httpx.HTTPError, OSError, ValueError) as e:
+                connection_ok = False
                 console.print(f"[red]✗[/] Azure OpenAI: {e}")
 
     # Summary
-    all_ok = azure_ok and ffmpeg_ok
+    all_ok = azure_ok and eleven_ok and tools_ok and connection_ok
     if all_ok:
         console.print("\n[green]✓ Configuration is valid![/]")
         raise typer.Exit(0)
