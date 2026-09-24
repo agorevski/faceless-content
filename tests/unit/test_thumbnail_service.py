@@ -1,16 +1,23 @@
 """
 Unit tests for the thumbnail service.
 
-Tests thumbnail prompt generation, template handling, and text overlay.
+Tests thumbnail prompt generation, composition, and optional overlay guidance.
 """
 
+import json
+import shutil
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from faceless.clients.azure_openai import AzureOpenAIClient
-from faceless.core.exceptions import ImageGenerationError
+from faceless.core.exceptions import (
+    FFmpegError,
+    ImageGenerationError,
+    InputValidationError,
+)
 
 # =============================================================================
 # Thumbnail Template Tests
@@ -119,10 +126,7 @@ class TestGenerateThumbnailPrompt:
 
     def test_concept_included(self) -> None:
         """Test that concept description is included."""
-        from faceless.services.thumbnail_service import (
-            THUMBNAIL_CONCEPTS,
-            generate_thumbnail_prompt,
-        )
+        from faceless.services.thumbnail_service import generate_thumbnail_prompt
 
         prompt = generate_thumbnail_prompt(
             title="Test Video",
@@ -130,8 +134,7 @@ class TestGenerateThumbnailPrompt:
             concept="reaction",
         )
 
-        # Part of the reaction concept should be in the prompt
-        assert "shocked" in prompt.lower() or "amazed" in prompt.lower()
+        assert "no face needed" in prompt.lower()
 
     def test_includes_composition_guidance(self) -> None:
         """Test that composition guidance is included."""
@@ -145,19 +148,23 @@ class TestGenerateThumbnailPrompt:
 
         assert "16:9" in prompt or "composition" in prompt.lower()
 
-    def test_fallback_for_unknown_niche(self) -> None:
-        """Test fallback to finance template for unknown niche."""
+    @pytest.mark.parametrize("niche", ["history", "true-crime", "unknown-niche"])
+    def test_fallback_for_unconfigured_niche(self, niche: str) -> None:
+        """Other niches use source-grounded visuals without finance cues."""
         from faceless.services.thumbnail_service import generate_thumbnail_prompt
 
         prompt = generate_thumbnail_prompt(
-            title="Test Title",
-            niche="unknown-niche",
+            title="The Ancient Library",
+            niche=niche,
             concept="reveal",
         )
 
-        # Should still generate a valid prompt
-        assert isinstance(prompt, str)
-        assert len(prompt) > 20
+        assert "The Ancient Library" in prompt
+        assert "supplied subject faithfully" in prompt
+        assert "extra claims" in prompt
+        assert "finance" not in prompt.lower()
+        assert "money" not in prompt.lower()
+        assert "green and gold" not in prompt.lower()
 
 
 # =============================================================================
@@ -243,9 +250,7 @@ class TestGenerateThumbnail:
         assert prompt_file.exists()
         assert prompt_file.read_text() == "My test prompt"
 
-    def test_generate_thumbnail_reuses_shared_client(
-        self, tmp_path: Path
-    ) -> None:
+    def test_generate_thumbnail_reuses_shared_client(self, tmp_path: Path) -> None:
         """The shared client owns download/error handling and its own lifecycle."""
         from faceless.services.thumbnail_service import generate_thumbnail
 
@@ -266,7 +271,9 @@ class TestGenerateThumbnail:
         client.close.assert_not_called()
         client.__exit__.assert_not_called()
 
-    def test_generate_thumbnail_replaces_empty_cached_file(self, tmp_path: Path) -> None:
+    def test_generate_thumbnail_replaces_empty_cached_file(
+        self, tmp_path: Path
+    ) -> None:
         """An interrupted, empty image file must not suppress generation."""
         from faceless.services.thumbnail_service import generate_thumbnail
 
@@ -310,14 +317,43 @@ class TestGenerateThumbnail:
 class TestGenerateThumbnailVariants:
     """Tests for generating multiple thumbnail variants."""
 
+    @pytest.mark.parametrize("num_variants", [0, -1])
     @patch("faceless.services.thumbnail_service.generate_thumbnail")
-    def test_generates_multiple_variants(
+    def test_rejects_nonpositive_variant_count(
+        self, mock_generate: MagicMock, num_variants: int, tmp_path: Path
+    ) -> None:
+        """Zero or negative counts must fail before contacting the image API."""
+        from faceless.services.thumbnail_service import generate_thumbnail_variants
+
+        with pytest.raises(InputValidationError, match="num_variants"):
+            generate_thumbnail_variants(
+                "Test", "finance", "test", tmp_path, num_variants=num_variants
+            )
+        mock_generate.assert_not_called()
+
+    @patch("faceless.services.thumbnail_service.generate_thumbnail")
+    def test_rejects_empty_concepts(
         self, mock_generate: MagicMock, tmp_path: Path
     ) -> None:
-        """Test that multiple variants are generated."""
+        """An empty concept selection cannot silently produce no thumbnails."""
+        from faceless.services.thumbnail_service import generate_thumbnail_variants
+
+        with pytest.raises(InputValidationError, match="concept"):
+            generate_thumbnail_variants(
+                "Test", "finance", "test", tmp_path, concepts=[]
+            )
+        mock_generate.assert_not_called()
+
+    @patch("faceless.services.thumbnail_service._compose_thumbnail")
+    @patch("faceless.services.thumbnail_service.generate_thumbnail")
+    def test_generates_multiple_variants(
+        self, mock_generate: MagicMock, mock_compose: MagicMock, tmp_path: Path
+    ) -> None:
+        """Test that every generated image is composed into its final path."""
         from faceless.services.thumbnail_service import generate_thumbnail_variants
 
         mock_generate.return_value = tmp_path / "thumb.png"
+        mock_compose.side_effect = lambda _source, output, _title, _niche: output
 
         result = generate_thumbnail_variants(
             title="Test Video",
@@ -329,15 +365,20 @@ class TestGenerateThumbnailVariants:
 
         assert len(result) == 3
         assert mock_generate.call_count == 3
+        assert mock_compose.call_count == 3
+        assert len(set(result)) == 3
+        assert all(path.suffix == ".png" for path in result)
 
+    @patch("faceless.services.thumbnail_service._compose_thumbnail")
     @patch("faceless.services.thumbnail_service.generate_thumbnail")
     def test_uses_niche_specific_concepts(
-        self, mock_generate: MagicMock, tmp_path: Path
+        self, mock_generate: MagicMock, mock_compose: MagicMock, tmp_path: Path
     ) -> None:
         """Test that niche-specific concepts are used."""
         from faceless.services.thumbnail_service import generate_thumbnail_variants
 
         mock_generate.return_value = tmp_path / "thumb.png"
+        mock_compose.side_effect = lambda _source, output, _title, _niche: output
 
         generate_thumbnail_variants(
             title="Test",
@@ -346,15 +387,23 @@ class TestGenerateThumbnailVariants:
             output_dir=tmp_path,
         )
 
-        # Should have called with scary-stories concepts
-        assert mock_generate.called
+        for i, concept in enumerate(["mystery", "reveal", "warning"], 1):
+            assert (
+                mock_generate.call_args_list[i - 1]
+                .args[2]
+                .startswith(f"test_thumb_v{i}_{concept}_source_")
+            )
 
+    @patch("faceless.services.thumbnail_service._compose_thumbnail")
     @patch("faceless.services.thumbnail_service.generate_thumbnail")
-    def test_custom_concepts(self, mock_generate: MagicMock, tmp_path: Path) -> None:
+    def test_custom_concepts(
+        self, mock_generate: MagicMock, mock_compose: MagicMock, tmp_path: Path
+    ) -> None:
         """Test using custom concepts."""
         from faceless.services.thumbnail_service import generate_thumbnail_variants
 
         mock_generate.return_value = tmp_path / "thumb.png"
+        mock_compose.side_effect = lambda _source, output, _title, _niche: output
 
         generate_thumbnail_variants(
             title="Test",
@@ -370,28 +419,238 @@ class TestGenerateThumbnailVariants:
     def test_handles_generation_failures(
         self, mock_generate: MagicMock, tmp_path: Path
     ) -> None:
-        """Test that failures are handled gracefully."""
+        """Failed images remain retryable without hiding successful variants."""
         from faceless.services.thumbnail_service import generate_thumbnail_variants
 
-        # First succeeds, second fails, third succeeds
         mock_generate.side_effect = [
             tmp_path / "thumb1.png",
-            ImageGenerationError("API Error"),
+            ImageGenerationError("API unavailable"),
             tmp_path / "thumb3.png",
         ]
+        with patch("faceless.services.thumbnail_service._compose_thumbnail") as compose:
+            compose.side_effect = lambda _source, output, _title, _niche: output
 
+            result = generate_thumbnail_variants(
+                title="Test",
+                niche="scary-stories",
+                base_name="test",
+                output_dir=tmp_path,
+                num_variants=3,
+            )
+
+        assert mock_generate.call_count == 3
+        assert result[0] is not None
+        assert result[1] is None
+        assert result[2] is not None
+
+    @patch("faceless.services.thumbnail_service.generate_thumbnail")
+    def test_marks_missing_image_for_retry(
+        self, mock_generate: MagicMock, tmp_path: Path
+    ) -> None:
+        """A missing generated source is not a successful variant."""
+        from faceless.services.thumbnail_service import generate_thumbnail_variants
+
+        mock_generate.return_value = None
         result = generate_thumbnail_variants(
-            title="Test",
-            niche="scary-stories",
-            base_name="test",
-            output_dir=tmp_path,
-            num_variants=3,
+            "Test", "finance", "test", tmp_path, concepts=["reveal"]
+        )
+        assert result == [None]
+
+    @patch("faceless.services.thumbnail_service._compose_thumbnail")
+    def test_retry_reuses_nonempty_sources_and_only_regenerates_missing(
+        self, mock_compose: MagicMock, tmp_path: Path
+    ) -> None:
+        """Retrying three variants pays the image API only for the failed one."""
+        from faceless.services.thumbnail_service import generate_thumbnail_variants
+
+        mock_compose.side_effect = lambda _source, output, _title, _niche: output
+        client = MagicMock(spec=AzureOpenAIClient)
+        client.generate_image.side_effect = [
+            b"first source",
+            ImageGenerationError("temporary outage"),
+            b"third source",
+            b"recovered source",
+        ]
+
+        options = {
+            "title": "Real video title",
+            "niche": "finance",
+            "base_name": "episode",
+            "output_dir": tmp_path,
+            "client": client,
+        }
+        first = generate_thumbnail_variants(**options)
+        second = generate_thumbnail_variants(**options)
+
+        assert first[0] == second[0]
+        assert first[1] is None
+        assert second[1] is not None
+        assert first[2] == second[2]
+        assert client.generate_image.call_count == 4
+        assert all(
+            call.kwargs["size"] == "1536x1024"
+            for call in client.generate_image.call_args_list
+        )
+        client.close.assert_not_called()
+
+    @patch("faceless.services.thumbnail_service.generate_thumbnail")
+    def test_composition_error_is_reported_and_cleans_up(
+        self, mock_generate: MagicMock, tmp_path: Path
+    ) -> None:
+        """Corrupt image input fails clearly and removes intermediate files."""
+        from faceless.services.thumbnail_service import generate_thumbnail_variants
+
+        if shutil.which("ffmpeg") is None:
+            pytest.skip("FFmpeg is not installed")
+        source = tmp_path / "broken.png"
+        source.write_bytes(b"not an image")
+        mock_generate.return_value = source
+        with pytest.raises(FFmpegError, match="composition failed"):
+            generate_thumbnail_variants(
+                "Actual title", "finance", "test", tmp_path, concepts=["reveal"]
+            )
+        assert not (tmp_path / "test_thumb_v1_reveal.png").exists()
+        assert not list(tmp_path.glob(".thumbnail-*"))
+
+    def test_selects_only_real_title_words(self) -> None:
+        """Thumbnail copy never introduces a claim or invented statistic."""
+        from faceless.services.thumbnail_service import _thumbnail_copy
+
+        title = "Why Stock Markets Fell This Week According to Research"
+        lines = _thumbnail_copy(title)
+        assert " ".join(lines) == "Why Stock Markets Fell This"
+        assert len(lines) <= 5
+        with pytest.raises(InputValidationError):
+            _thumbnail_copy(" \n\t ")
+
+    def test_long_word_is_shortened_for_readability(self) -> None:
+        """Unusually long title words do not shrink the whole caption to tiny text."""
+        from faceless.services.thumbnail_service import _text_width, _thumbnail_copy
+
+        lines = _thumbnail_copy("Supercalifragilisticexpialidocious story revealed")
+        assert lines[0].endswith("…")
+        assert max(_text_width(line) for line in lines) <= 8.0
+
+    @patch("faceless.services.thumbnail_service._compose_thumbnail")
+    @patch("faceless.services.thumbnail_service.generate_thumbnail")
+    def test_image_cache_key_changes_with_title(
+        self, mock_generate: MagicMock, mock_compose: MagicMock, tmp_path: Path
+    ) -> None:
+        """Reusing a basename for another title cannot reuse its old raw imagery."""
+        from faceless.services.thumbnail_service import generate_thumbnail_variants
+
+        mock_generate.return_value = tmp_path / "source.png"
+        mock_compose.side_effect = lambda _source, output, _title, _niche: output
+        for title in ("How Trees Grow", "Why Trees Die"):
+            generate_thumbnail_variants(
+                title, "finance", "tree", tmp_path, concepts=["reveal"]
+            )
+        assert (
+            mock_generate.call_args_list[0].args[2]
+            != (mock_generate.call_args_list[1].args[2])
         )
 
-        assert len(result) == 3
-        assert result[0] is not None
-        assert result[1] is None  # Failed
-        assert result[2] is not None
+    @patch("faceless.services.thumbnail_service.generate_thumbnail")
+    def test_composes_real_png_with_escaped_unicode_copy(
+        self, mock_generate: MagicMock, tmp_path: Path
+    ) -> None:
+        """The composed PNG has correct size, legible white copy and a visible image."""
+        from faceless.services.thumbnail_service import generate_thumbnail_variants
+
+        if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
+            pytest.skip("FFmpeg and ffprobe are required for the smoke test")
+        output_dir = tmp_path / "thumb's:東京"
+        output_dir.mkdir()
+        source = output_dir / "source.png"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=0x334455:s=640x360",
+                "-frames:v",
+                "1",
+                "-update",
+                "1",
+                str(source),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        mock_generate.return_value = source
+        paths = generate_thumbnail_variants(
+            title="Why O'Brien's Café: 100% %{metadata}",
+            niche="scary-stories",
+            base_name="../episode;$(whoami)",
+            output_dir=output_dir,
+            concepts=["reveal"],
+        )
+        assert len(paths) == 1
+        result = paths[0]
+        assert result.parent == output_dir
+        assert result.is_file()
+        probe = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=codec_name,width,height",
+                "-of",
+                "json",
+                str(result),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert json.loads(probe.stdout)["streams"][0] == {
+            "codec_name": "png",
+            "width": 1280,
+            "height": 720,
+        }
+        pixels = subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-i",
+                str(result),
+                "-frames:v",
+                "1",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "rgb24",
+                "pipe:1",
+            ],
+            check=True,
+            capture_output=True,
+        ).stdout
+        assert len(pixels) == 1280 * 720 * 3
+
+        def rgb(x: int, y: int) -> tuple[int, int, int]:
+            offset = (y * 1280 + x) * 3
+            return pixels[offset], pixels[offset + 1], pixels[offset + 2]
+
+        assert rgb(68, 300)[0] > 175  # niche accent, inside safe margins
+        assert rgb(900, 360)[2] > 55  # original image remains visible
+        bright_text = sum(
+            all(channel > 180 for channel in rgb(x, y))
+            for y in range(185, 540, 4)
+            for x in range(100, 625, 4)
+        )
+        assert bright_text > 50
+        assert not list(output_dir.glob(".thumbnail-*"))
 
 
 # =============================================================================

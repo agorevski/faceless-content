@@ -106,7 +106,7 @@ class BaseHTTPClient(LoggerMixin):
                 if retry_at.tzinfo is None:
                     retry_at = retry_at.replace(tzinfo=timezone.utc)
                 return max(
-                    0, ceil((retry_at - datetime.now(timezone.utc)).total_seconds())
+                    0, int(ceil((retry_at - datetime.now(timezone.utc)).total_seconds()))
                 )
             except (TypeError, ValueError, OverflowError):
                 return None

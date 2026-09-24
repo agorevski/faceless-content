@@ -20,7 +20,7 @@ This document describes the system architecture, data flow, and component intera
 │  ┌───────────────────────────────────────────────────────────────────────┐ │
 │  │                      PIPELINE ORCHESTRATOR                            │ │
 │  │                                                                       │ │
-│  │   Load Scripts → Enhance → Images → Audio → Video → Post-process      │ │
+│  │   Load Scripts → Enhance → Quality Gate → Images → Audio → Video      │ │
 │  │                                                                       │ │
 │  │   Features: Checkpointing, Resume, Progress Tracking                  │ │
 │  └───────────────────────────────────────────────────────────────────────┘ │
@@ -184,16 +184,18 @@ results = orchestrator.run(
     niche=Niche.SCARY_STORIES,
     platforms=[Platform.YOUTUBE, Platform.TIKTOK],
     count=3,
-    enhance=True,
+    enhance=True,  # Default; quality approval also applies if False
 )
 ```
 
 **Responsibilities:**
 
-- Load/create scripts
+- Load existing scripts
+- Enhance the opening hook and visual direction by default
+- Require AI quality approval before media generation; revise from feedback up to twice (unless disabled or critical issues are found)
 - Coordinate service calls
 - Manage checkpoints for resume
-- Track progress and errors
+- Track output assets, progress, and errors
 - Generate final results
 
 ### 3. Services Layer (`services/`)
@@ -231,7 +233,9 @@ Assembles final videos:
 - Ken Burns effect (zoom/pan)
 - Scene concatenation
 - Background music mixing
-- Platform-specific encoding
+- Platform-specific encoding and platform-specific source images
+- First-frame, high-contrast spoken hook in a safe area above subtitles
+- TikTok output receives caption burn-in after assembly when subtitles are enabled
 
 #### DeepResearchService
 
@@ -250,7 +254,7 @@ Evaluates script quality before production:
 - Hook quality scoring (0-10 scale)
 - Retention curve prediction
 - Engagement potential analysis
-- Quality gates enforcement
+- Pre-production strict quality approval (all gates, hook >= 7/10, overall >= 6.5/10, no critical issues)
 - Hook improvement suggestions
 - CLI: `faceless quality script.json`
 
@@ -273,7 +277,7 @@ Generates subtitles for videos:
 - Audio-based timing extraction
 - Script-based subtitle generation
 - Animated caption data for TikTok-style effects
-- Subtitle burn-in to video with FFmpeg
+- Safe-area caption burn-in for TikTok via FFmpeg; YouTube gets separate SRT/VTT
 
 #### ThumbnailService
 
@@ -281,8 +285,8 @@ Generates thumbnail variants:
 
 - Multiple concept templates (reaction, reveal, mystery, etc.)
 - A/B testing variants generation
-- Text overlay instructions
-- Platform-optimized sizing
+- Composited 1280x720 PNGs with short title text and safe margins
+- Three variants for YouTube output; no thumbnails for TikTok-only jobs
 
 #### ScraperService
 
@@ -509,10 +513,14 @@ class MyService(LoggerMixin):
 | Asset Type | Pattern | Example |
 | ---------- | ------- | ------- |
 | Script | `{safe_title}_script.json` | `the-house-at-the-end_script.json` |
+| Approved production script | `{safe_title}_production.json` | `the-house-at-the-end_production.json` |
 | Image | `scene_{NN}_{platform}.png` | `scene_01_youtube.png` |
 | Audio | `scene_{NN}.mp3` | `scene_01.mp3` |
 | Video Segment | `scene_{NN}_{platform}.mp4` | `scene_01_youtube.mp4` |
 | Final Video | `{niche}_{title}_{platform}.mp4` | `scary-stories_the-house_youtube.mp4` |
+| Captioned TikTok Video | `{niche}_{title}_tiktok_captioned.mp4` | `scary-stories_the-house_tiktok_captioned.mp4` |
+| YouTube thumbnail | `{safe_title}_thumb_v{N}_{concept}.png` | `the-house_thumb_v1_mystery.png` |
+| Subtitles | `{safe_title}_production.{srt,vtt}` | `the-house_production.srt` |
 
 ## Checkpointing System
 
@@ -521,17 +529,20 @@ Enables resuming failed runs:
 ```json
 {
   "job_id": "550e8400-e29b-41d4-a716-446655440000",
-  "script_path": "output/scary-stories/scripts/the-house_script.json",
+  "script_path": "output/scary-stories/scripts/the-house_production.json",
   "status": "generating_audio",
-  "started_at": "2025-01-29T19:00:00Z",
-  "completed_steps": ["enhance", "images"],
-  "completed_images": [1, 2, 3, 4, 5],
-  "completed_audio": [1, 2],
-  "completed_videos": {}
+  "completed_steps": ["enhance", "quality", "images"],
+  "images_generated": [1, 2, 3, 4, 5],
+  "audio_generated": [1, 2],
+  "videos_generated": {}
 }
 ```
 
 **Checkpoint Location:** `output/{niche}/.checkpoints/{script_name}.checkpoint.json`
+The approved script, source fingerprint, and result paths are saved separately.
+A different same-title source cannot reuse an approved checkpoint. A stage is
+marked complete only after its required output exists; otherwise the job
+returns an actionable failure.
 
 ## API Dependencies
 
@@ -549,9 +560,9 @@ Enables resuming failed runs:
 | Resolution | 1920×1080 | 1080×1920 |
 | Aspect Ratio | 16:9 | 9:16 |
 | Image Size | 1536×1024 | 1024×1536 |
-| FPS | 30 | 30 |
+| FPS | 25 | 25 |
 | Codec | libx264 | libx264 |
-| Max Duration | Unlimited | 60s segments |
+| Recommended Max Duration | 600s | 180s (not enforced) |
 
 ## Voice Settings by Niche
 

@@ -3,6 +3,9 @@ Tests for the text_overlay module.
 Tests text overlay generation and FFmpeg filter creation.
 """
 
+import shutil
+import subprocess
+
 import pytest
 
 from faceless.core.text_overlay import (
@@ -15,6 +18,7 @@ from faceless.core.text_overlay import (
     create_cta_overlay,
     create_hook_overlay,
     create_mid_video_overlay,
+    create_opening_hook_overlays,
     create_pov_overlay,
     generate_overlay_filter_chain,
     overlay_to_ffmpeg_filter,
@@ -292,7 +296,7 @@ class TestOverlayToFfmpegFilter:
         filter_str = overlay_to_ffmpeg_filter(overlay)
 
         assert "drawtext=" in filter_str
-        assert "text='Test'" in filter_str
+        assert "text=Test" in filter_str
         assert "enable=" in filter_str
 
     def test_escapes_special_characters(self):
@@ -310,6 +314,82 @@ class TestOverlayToFfmpegFilter:
 
         assert "5" in filter_str
         assert "10" in filter_str
+
+    @pytest.mark.parametrize("width,height", [(1920, 1080), (1080, 1920)])
+    def test_opening_hook_layout_and_source(self, width: int, height: int) -> None:
+        narration = (
+            "What if the locked door opened on its own? Nobody believed the witness."
+        )
+        overlays = create_opening_hook_overlays(narration, 2.4, width, height)
+
+        assert 1 < len(overlays) <= 5
+        assert " ".join(overlay.text for overlay in overlays) == (
+            "What if the locked door opened on its own?"
+        )
+        assert overlays[0].style.font_size > overlays[1].style.font_size
+        assert all(overlay.start_time == 0 for overlay in overlays)
+        assert all(overlay.end_time == 2.4 for overlay in overlays)
+        assert all(
+            overlay.style.background_color == "black@0.7" for overlay in overlays
+        )
+        assert all(int(overlay.y or 0) < height * 0.6 for overlay in overlays)
+
+        chain = generate_overlay_filter_chain(overlays, width, height)
+        assert chain.count("drawtext=") == len(overlays)
+        assert "box=1:boxcolor=black@0.7" in chain
+        assert f"+{round(width * (0.15 if height > width else 0.10))}" in chain
+
+    def test_long_unbroken_opening_stays_above_caption_area(self) -> None:
+        overlays = create_opening_hook_overlays("W" * 200, 8, 1080, 1920)
+
+        assert 1 < len(overlays) <= 6
+        assert len("".join(overlay.text for overlay in overlays)) <= 80
+        assert all(
+            int(overlay.y or 0) + overlay.style.font_size < 1920 * 0.6
+            for overlay in overlays
+        )
+        assert all(overlay.end_time == 3.0 for overlay in overlays)
+
+    def test_question_hook_does_not_display_the_next_sentence(self) -> None:
+        overlays = create_opening_hook_overlays(
+            "Why now? The longer explanation comes later.", 9, 1080, 1920
+        )
+
+        assert " ".join(overlay.text for overlay in overlays) == "Why now?"
+
+    @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="FFmpeg unavailable")
+    def test_special_characters_are_literal_in_ffmpeg(self) -> None:
+        text = "What's at 9:30, 100% \\\\here?\nNext [scene]; safe"
+        graph = overlay_to_ffmpeg_filter(
+            TextOverlay(text=text, animation=TextAnimation.NONE)
+        )
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "debug",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=black:s=320x180:d=0.1",
+                "-vf",
+                graph,
+                "-frames:v",
+                "1",
+                "-f",
+                "null",
+                "-",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert f"Setting 'text' to value '{text}'" in result.stderr
+        assert "Setting 'expansion' to value 'none'" in result.stderr
 
 
 class TestGenerateOverlayFilterChain:

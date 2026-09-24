@@ -5,6 +5,8 @@ Tests subtitle generation, timestamp formatting, and animated captions.
 """
 
 import json
+import shutil
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -105,7 +107,6 @@ class TestGetAudioDuration:
     @patch("faceless.services.subtitle_service.subprocess.run")
     def test_get_audio_duration_timeout(self, mock_run: MagicMock) -> None:
         """Timeout errors must not fabricate a 60-second duration."""
-        import subprocess
 
         from faceless.services.subtitle_service import get_audio_duration
 
@@ -308,6 +309,22 @@ class TestCreateSubtitlesFromScript:
         assert srt_path.exists()
         assert vtt_path.exists()
 
+    @pytest.mark.parametrize("chunk_size", [0, -1, False])
+    def test_invalid_chunk_size_is_rejected(
+        self, tmp_path: Path, chunk_size: int
+    ) -> None:
+        """A zero or negative chunk size cannot generate timed subtitles."""
+        from faceless.core.exceptions import InputValidationError
+        from faceless.services.subtitle_service import create_subtitles_from_script
+
+        with pytest.raises(InputValidationError, match="words_per_subtitle"):
+            create_subtitles_from_script(
+                tmp_path / "unused.json",
+                "scary-stories",
+                output_dir=tmp_path,
+                words_per_subtitle=chunk_size,
+            )
+
 
 # =============================================================================
 # Create Subtitles From Audio Tests
@@ -380,25 +397,36 @@ class TestCreateSubtitlesFromAudio:
 class TestBurnSubtitlesToVideo:
     """Tests for burning subtitles into video."""
 
+    @staticmethod
+    def _successful_run(
+        cmd: list[str], **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        Path(cmd[-1]).write_bytes(b"mock video")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
     @patch("faceless.services.subtitle_service.subprocess.run")
     def test_burn_subtitles_success(self, mock_run: MagicMock, tmp_path: Path) -> None:
         """Test successful subtitle burning."""
         from faceless.services.subtitle_service import burn_subtitles_to_video
 
-        mock_run.return_value = MagicMock(returncode=0, stderr="")
+        mock_run.side_effect = self._successful_run
 
         video_path = tmp_path / "video.mp4"
         video_path.touch()
         subtitle_path = tmp_path / "subs.srt"
         subtitle_path.touch()
-        output_path = tmp_path / "output.mp4"
+        output_path = tmp_path / "nested" / "output.mp4"
 
         result = burn_subtitles_to_video(
             video_path, subtitle_path, output_path, "scary-stories"
         )
 
         assert result == output_path
+        assert output_path.read_bytes() == b"mock video"
         mock_run.assert_called_once()
+        assert mock_run.call_args.kwargs["timeout"] == 600
+        assert mock_run.call_args.kwargs["capture_output"] is True
+        assert "shell" not in mock_run.call_args.kwargs
 
     @patch("faceless.services.subtitle_service.subprocess.run")
     def test_burn_subtitles_with_style_override(
@@ -407,7 +435,7 @@ class TestBurnSubtitlesToVideo:
         """Test subtitle burning with style override."""
         from faceless.services.subtitle_service import burn_subtitles_to_video
 
-        mock_run.return_value = MagicMock(returncode=0, stderr="")
+        mock_run.side_effect = self._successful_run
 
         video_path = tmp_path / "video.mp4"
         video_path.touch()
@@ -424,12 +452,50 @@ class TestBurnSubtitlesToVideo:
         )
 
         assert result == output_path
+        cmd = mock_run.call_args.args[0]
+        assert "FontSize=64" in cmd[cmd.index("-vf") + 1]
+
+    @patch("faceless.services.subtitle_service.subprocess.run")
+    def test_portrait_override_and_escaped_path(
+        self, mock_run: MagicMock, tmp_path: Path
+    ) -> None:
+        """The filtergraph keeps special characters in paths and ASS styles."""
+        from faceless.services.subtitle_service import (
+            burn_subtitles_to_video,
+            portrait_caption_style,
+        )
+
+        mock_run.side_effect = self._successful_run
+        video_path = tmp_path / "video.mp4"
+        video_path.touch()
+        subtitle_path = tmp_path / "it's a:caption\\demo,[];.srt"
+        subtitle_path.touch()
+
+        burn_subtitles_to_video(
+            video_path,
+            subtitle_path,
+            tmp_path / "captioned.mp4",
+            "finance",
+            style_override=portrait_caption_style("finance"),
+        )
+
+        cmd = mock_run.call_args.args[0]
+        filter_spec = cmd[cmd.index("-vf") + 1]
+        assert "subtitles=filename=" in filter_spec
+        assert r"\:" in filter_spec
+        assert r"\'" in filter_spec
+        assert r"\\" in filter_spec
+        assert r"\," in filter_spec
+        assert "MarginR=240" in filter_spec
+        assert "MarginV=520" in filter_spec
+        assert "PlayResY=1920" in filter_spec
 
     @patch("faceless.services.subtitle_service.subprocess.run")
     def test_burn_subtitles_ffmpeg_error(
         self, mock_run: MagicMock, tmp_path: Path
     ) -> None:
         """Test handling FFmpeg errors."""
+        from faceless.core.exceptions import FFmpegError
         from faceless.services.subtitle_service import burn_subtitles_to_video
 
         mock_run.return_value = MagicMock(returncode=1, stderr="FFmpeg error")
@@ -440,10 +506,208 @@ class TestBurnSubtitlesToVideo:
         subtitle_path.touch()
         output_path = tmp_path / "output.mp4"
 
-        with pytest.raises(RuntimeError, match="FFmpeg subtitle burn failed"):
+        with pytest.raises(FFmpegError, match="FFmpeg subtitle burn failed"):
             burn_subtitles_to_video(
                 video_path, subtitle_path, output_path, "scary-stories"
             )
+        assert not output_path.exists()
+
+    @pytest.mark.parametrize("failure", ["timeout", "missing_binary", "empty_output"])
+    @patch("faceless.services.subtitle_service.subprocess.run")
+    def test_ffmpeg_failure_does_not_report_success(
+        self, mock_run: MagicMock, failure: str, tmp_path: Path
+    ) -> None:
+        """Timeouts, missing executables, and missing output raise FFmpegError."""
+        from faceless.core.exceptions import FFmpegError
+        from faceless.services.subtitle_service import burn_subtitles_to_video
+
+        video_path = tmp_path / "video.mp4"
+        video_path.touch()
+        subtitle_path = tmp_path / "subs.srt"
+        subtitle_path.touch()
+        output_path = tmp_path / "output.mp4"
+        if failure == "timeout":
+            mock_run.side_effect = subprocess.TimeoutExpired("ffmpeg", 600)
+        elif failure == "missing_binary":
+            mock_run.side_effect = FileNotFoundError("ffmpeg")
+        else:
+            mock_run.return_value = subprocess.CompletedProcess([], 0, "", "")
+
+        with patch("faceless.services.subtitle_service.logger") as mock_logger:
+            with pytest.raises(FFmpegError):
+                burn_subtitles_to_video(video_path, subtitle_path, output_path)
+            mock_logger.error.assert_called_once()
+            assert not any(
+                call.args[0] == "Created video with subtitles"
+                for call in mock_logger.info.call_args_list
+            )
+
+    @pytest.mark.parametrize(
+        "invalid_input", ["video", "subtitles", "output", "format"]
+    )
+    @patch("faceless.services.subtitle_service.subprocess.run")
+    def test_rejects_invalid_paths(
+        self, mock_run: MagicMock, invalid_input: str, tmp_path: Path
+    ) -> None:
+        """Reject missing input, unsupported subtitles, and destructive outputs."""
+        from faceless.core.exceptions import InputValidationError
+        from faceless.services.subtitle_service import burn_subtitles_to_video
+
+        video_path = tmp_path / "video.mp4"
+        video_path.touch()
+        subtitle_path = tmp_path / "subs.srt"
+        subtitle_path.touch()
+        output_path = tmp_path / "output.mp4"
+        if invalid_input == "video":
+            video_path.unlink()
+        elif invalid_input == "subtitles":
+            subtitle_path.unlink()
+        elif invalid_input == "output":
+            output_path = video_path
+        else:
+            subtitle_path = subtitle_path.rename(tmp_path / "subs.txt")
+
+        with pytest.raises(InputValidationError):
+            burn_subtitles_to_video(video_path, subtitle_path, output_path)
+        mock_run.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "invalid_style",
+        [
+            {"font_name": "Arial',evil=1"},
+            {"font_size": 0},
+            {"margin_r": -1},
+            {"alignment": 10},
+            {"play_res_y": 0},
+            {"primary_color": "red"},
+            {"font_size": float("nan")},
+            {"unknown_option": "unsafe"},
+        ],
+    )
+    @patch("faceless.services.subtitle_service.subprocess.run")
+    def test_rejects_invalid_style_overrides(
+        self, mock_run: MagicMock, invalid_style: dict[str, object], tmp_path: Path
+    ) -> None:
+        """Style overrides cannot inject filter syntax or hide captions."""
+        from faceless.core.exceptions import InputValidationError
+        from faceless.services.subtitle_service import burn_subtitles_to_video
+
+        video_path = tmp_path / "video.mp4"
+        video_path.touch()
+        subtitle_path = tmp_path / "subs.srt"
+        subtitle_path.touch()
+
+        with pytest.raises(InputValidationError):
+            burn_subtitles_to_video(
+                video_path,
+                subtitle_path,
+                tmp_path / "output.mp4",
+                style_override=invalid_style,
+            )
+        mock_run.assert_not_called()
+
+    @pytest.mark.skipif(
+        shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None,
+        reason="FFmpeg and FFprobe are required for the portrait smoke test",
+    )
+    def test_portrait_smoke_with_special_subtitle_path(self, tmp_path: Path) -> None:
+        """A real burn yields video and keeps visible text in the safe zone."""
+        from faceless.services.subtitle_service import (
+            burn_subtitles_to_video,
+            portrait_caption_style,
+        )
+
+        video_path = tmp_path / "portrait.mp4"
+        subtitle_path = tmp_path / "it's a:caption\\demo,[];.srt"
+        subtitle_path.write_text(
+            "1\n00:00:00,000 --> 00:00:02,000\n"
+            "Readable captions are clear in a portrait video\n",
+            encoding="utf-8",
+        )
+        output_path = tmp_path / "captioned.mp4"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-loglevel",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=0x303030:s=1080x1920:r=1:d=2",
+                "-c:v",
+                "mpeg4",
+                "-threads",
+                "2",
+                str(video_path),
+            ],
+            capture_output=True,
+            check=True,
+            timeout=60,
+        )
+
+        burn_subtitles_to_video(
+            video_path,
+            subtitle_path,
+            output_path,
+            style_override=portrait_caption_style("scary-stories"),
+        )
+
+        probe = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=width,height,codec_name",
+                "-of",
+                "json",
+                str(output_path),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=30,
+        )
+        stream = json.loads(probe.stdout)["streams"][0]
+        assert (stream["width"], stream["height"]) == (1080, 1920)
+        assert stream["codec_name"] != ""
+
+        frame = subprocess.run(
+            [
+                "ffmpeg",
+                "-loglevel",
+                "error",
+                "-ss",
+                "0.5",
+                "-i",
+                str(output_path),
+                "-frames:v",
+                "1",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "rgb24",
+                "-",
+            ],
+            capture_output=True,
+            check=True,
+            timeout=60,
+        ).stdout
+        assert len(frame) == 1080 * 1920 * 3
+        bright_pixels = [
+            (x, y)
+            for y in range(0, 1920, 2)
+            for x in range(0, 1080, 2)
+            if min(frame[(y * 1080 + x) * 3 : (y * 1080 + x) * 3 + 3]) > 210
+        ]
+        assert len(bright_pixels) > 300
+        assert min(y for _, y in bright_pixels) > 850
+        assert max(y for _, y in bright_pixels) < 1600
+        assert min(x for x, _ in bright_pixels) > 40
+        assert max(x for x, _ in bright_pixels) < 900
 
 
 # =============================================================================
@@ -627,3 +891,20 @@ class TestSubtitleStyles:
         from faceless.services.subtitle_service import SUBTITLE_STYLES
 
         assert "luxury" in SUBTITLE_STYLES
+
+    def test_portrait_style_is_high_contrast_and_does_not_mutate_preset(self) -> None:
+        """A separate portrait override preserves the existing landscape preset."""
+        from faceless.services.subtitle_service import (
+            SUBTITLE_STYLES,
+            portrait_caption_style,
+        )
+
+        initial = SUBTITLE_STYLES["finance"].copy()
+        style = portrait_caption_style("finance")
+        assert style["primary_color"] == "&H00FFFFFF"
+        assert style["outline_color"] == "&H00000000"
+        assert style["font_size"] >= 70
+        assert style["margin_r"] > style["margin_l"]
+        assert style["margin_v"] >= 400
+        assert style["alignment"] == 2
+        assert SUBTITLE_STYLES["finance"] == initial

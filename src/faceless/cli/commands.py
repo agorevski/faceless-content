@@ -132,30 +132,34 @@ def generate(
         bool,
         typer.Option(
             "--skip-fetch",
-            help="Skip fetching new stories, use existing scripts",
+            help="Compatibility flag (no-op): generation already uses existing scripts",
         ),
     ] = False,
     enhance: Annotated[
         bool,
         typer.Option(
-            "--enhance",
+            "--enhance/--no-enhance",
             "-e",
-            help="Enhance scripts with GPT for better engagement",
+            help=(
+                "Enhance scripts with GPT by default (paid AI call); weak "
+                "scripts may incur up to two paid revisions and reassessments. "
+                "Quality approval is still required with --no-enhance"
+            ),
         ),
-    ] = False,
+    ] = True,
     thumbnails: Annotated[
         bool,
         typer.Option(
             "--thumbnails/--no-thumbnails",
             "-t",
-            help="Generate thumbnail variants",
+            help="Generate paid AI thumbnail variants for YouTube videos",
         ),
     ] = True,
     subtitles: Annotated[
         bool,
         typer.Option(
             "--subtitles/--no-subtitles",
-            help="Generate subtitle files",
+            help="Generate SRT/VTT and burn safe-area captions into TikTok videos",
         ),
     ] = True,
     music: Annotated[
@@ -172,8 +176,10 @@ def generate(
     """
     Generate faceless video content.
 
-    This command runs the full pipeline: fetch content, generate images,
-    create audio, and assemble final videos.
+    Load an existing script with --script, or use scripts already present in
+    the niche scripts directory. The command does not fetch new content.
+    It enhances and checks script quality before generating images, audio,
+    videos, and optional thumbnails and subtitles.
 
     Examples:
 
@@ -183,8 +189,8 @@ def generate(
         # Generate 3 finance videos for YouTube only
         faceless generate finance -c 3 -p youtube
 
-        # Process a specific script with enhancement
-        faceless generate scary-stories -s path/to/script.json --enhance
+        # Skip script enhancement (quality approval is still required)
+        faceless generate scary-stories -s path/to/script.json --no-enhance
     """
     if platform is None:
         platform = [Platform.YOUTUBE, Platform.TIKTOK]
@@ -252,7 +258,15 @@ def generate(
 
         # Show output locations
         if any(
-            r.video_paths or r.thumbnail_paths or r.subtitle_paths for r in results
+            r.video_paths
+            or r.thumbnail_paths
+            or r.subtitle_paths
+            or (
+                r.script_path
+                and r.script_path.name.endswith("_production.json")
+                and r.script_path.is_file()
+            )
+            for r in results
         ):
             console.print("\n[bold]Output files:[/]")
             for result in results:
@@ -263,7 +277,9 @@ def generate(
                 for path in result.thumbnail_paths:
                     console.print(f"  [dim]Thumbnail:[/] {path}")
                 for subtitle_format, path in result.subtitle_paths.items():
-                    console.print(f"  [dim]{subtitle_format.upper()}:[/] {path}")
+                    console.print(
+                        f"  [dim]{subtitle_format.upper()} subtitles:[/] {path}"
+                    )
 
     except (FacelessError, OSError, ValueError) as e:
         console.print(f"\n[red]✗ Pipeline failed: {e}[/]")
@@ -609,7 +625,9 @@ def research(
                 importance = (
                     "🔴"
                     if finding.importance >= 0.8
-                    else "🟡" if finding.importance >= 0.5 else "⚪"
+                    else "🟡"
+                    if finding.importance >= 0.5
+                    else "⚪"
                 )
                 console.print(f"  {importance} {i}. {finding.content}")
 
@@ -981,7 +999,9 @@ def trending(
                 score_color = (
                     "green"
                     if topic.score >= 80
-                    else "yellow" if topic.score >= 60 else "white"
+                    else "yellow"
+                    if topic.score >= 60
+                    else "white"
                 )
                 console.print(f"  [{score_color}]{topic.score:.0f}[/] {topic.title}")
 

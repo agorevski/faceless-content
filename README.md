@@ -15,8 +15,8 @@ AI-powered content production pipeline for creating "faceless" videos with AI-ge
 - **Automated Video Assembly**: FFmpeg-based video production
 - **Multi-Platform Output**: YouTube (16:9) and TikTok (9:16) formats
 - **Smart Checkpointing**: Resume interrupted jobs automatically
-- **Thumbnail Generation**: A/B testing variants for CTR optimization
-- **Subtitle Generation**: SRT/VTT formats with optional burn-in
+- **Thumbnail Generation**: Three composed 1280x720 YouTube variants with readable title text
+- **Subtitle Generation**: Timed SRT/VTT files, with readable captions burned into TikTok videos
 - **Deep Research**: AI-powered topic research with configurable depth levels
 - **Quality Scoring**: Hook analysis, retention prediction, and quality gates
 - **Trend Discovery**: Find trending topics from Reddit with viral potential scoring
@@ -77,8 +77,11 @@ faceless generate scary-stories
 # Generate 3 finance videos for YouTube only
 faceless generate finance -c 3 -p youtube
 
-# Process a specific script with enhancement
-faceless generate scary-stories -s path/to/script.json --enhance
+# Process a specific script (AI enhancement and quality approval are on by default)
+faceless generate scary-stories -s path/to/script.json
+
+# Keep the existing narration but still require AI quality approval
+faceless generate scary-stories -s path/to/script.json --no-enhance
 
 # Generate video only, without additional thumbnail image requests or subtitles
 faceless generate finance -s path/to/script.json --no-thumbnails --no-subtitles
@@ -92,12 +95,16 @@ also causes a nonzero exit status.
 processed, so scheduled jobs can detect failures. For an empty run, supply
 `--script` or place scripts in the niche's output `scripts` directory. Successful
 outputs from partially failed runs are still listed and retained.
-Use `--no-thumbnails` and `--no-subtitles` to disable optional outputs.
+`--skip-fetch` is retained for compatibility but has no effect: generation only
+uses existing scripts. Use `--no-thumbnails` and `--no-subtitles` to disable
+optional outputs.
 
-By default, a successful video production also creates three thumbnail variants
-and SRT/VTT subtitles. Thumbnails use additional image-generation requests; existing
-nonempty variants are reused on retry. Subtitles use script narration and measured
-scene-audio durations, with estimated word timing rather than speech recognition.
+By default, a successful YouTube video production also creates three thumbnail
+variants; SRT/VTT subtitles are generated for videos on either platform, and
+TikTok videos include burned-in captions. Thumbnails use additional
+image-generation requests; existing nonempty variants are reused on retry.
+Subtitles use script narration and measured scene-audio durations, with
+estimated word timing rather than speech recognition.
 The CLI lists these artifacts and a production script saved alongside the final
 videos. That script records the narration, measured durations, and video paths
 without overwriting the source script.
@@ -106,9 +113,11 @@ Optional-output failures leave successful videos and other artifacts intact, but
 return a failure status. A rerun retries missing thumbnail variants and recreates
 subtitle files even if an older checkpoint incorrectly marked them complete.
 
-Enhanced scripts are stored inside the checkpoint before asset generation starts.
+Enhanced scripts are saved as production snapshots referenced by the checkpoint
+before asset generation starts.
 Resuming from the original script restores the same enhanced title, narration, and
-image prompts, even if `--enhance` is omitted on the rerun. Missing or invalid
+image prompts with the default enhancement setting. An enhanced checkpoint cannot
+be resumed with `--no-enhance`; start a new job instead. Missing or invalid
 enhanced snapshots stop the job rather than mixing original text with enhanced
 assets. Checkpoint identity stays tied to the original script.
 
@@ -156,20 +165,22 @@ faceless-content/
 
 ## 🎬 Pipeline Workflow
 
-1. **Content Acquisition**: Fetch stories from Reddit or load existing scripts
-2. **Script Enhancement** (optional): Use GPT to improve engagement and pacing
-3. **Image Generation**: Create AI images for each scene
-4. **Audio Generation**: Convert narration text to speech
-5. **Video Assembly**: Combine images and audio with FFmpeg
-6. **Post-Processing**: Generate thumbnails, subtitles, and TikTok cuts
+1. **Script selection**: Load a supplied script or scripts already in the niche's scripts directory. The `generate` command does not fetch new stories.
+2. **Opening and visual direction**: By default, Azure chat refines scene 1 into a brief, source-grounded spoken hook with an immediate payoff and consistent scene imagery. `--no-enhance` keeps the original wording.
+3. **Quality approval and revision**: An AI assessment must pass all script-quality gates, including a hook score of at least 7/10, before media generation. On a weak script, the enhancer uses quality feedback for up to **two more revisions**, with assessment after each. Invalid assessments, persistent failures, or critical factual issues stop the job for human review. `--no-enhance` skips automatic revision but **not** approval.
+4. **Scene production**: Generate separate platform-specific images and TTS narration; `ffprobe` must report valid audio durations for scene timing.
+5. **Video assembly**: FFmpeg renders the first spoken words as a high-contrast, short first-frame hook inside platform-safe margins, then joins the scenes and optionally mixes music.
+6. **Post-production**: Generate SRT/VTT subtitles and burn high-contrast, UI-safe captions into TikTok videos when subtitles are enabled; YouTube keeps separate subtitle files. Then generate three text-composited thumbnails when YouTube is selected. Subtitle timings are estimated from the narration and scene durations, not speech-aligned.
+
+Enhancement, assessment, image, TTS, and YouTube thumbnail generation make paid API calls. A rejected script can incur up to two extra enhancement and two extra assessment calls; disable enhancement with `--no-enhance` to avoid those revisions. AI quality scores and retention estimates are editorial aids, **not** proof of factual accuracy or actual audience performance; review sensitive claims and visuals before publishing. Checkpointing saves the production script and generated asset paths so a failed run can resume, and rejects a different source script with the same title.
 
 ### Key Capabilities
 
 - **Checkpointing**: Resume failed runs without losing progress
 - **Multi-Platform**: Optimized output for YouTube (16:9) and TikTok (9:16)
-- **TikTok Cuts**: Automatically segments long videos into 60-second clips
-- **A/B Thumbnails**: Generate multiple thumbnail variants for testing
-- **Animated Subtitles**: TikTok-style word-by-word caption data
+- **First-frame layout**: Readable text from the spoken hook with portrait/landscape safe margins
+- **A/B thumbnails**: Three actual 16:9 PNGs with short title text and niche accents
+- **Timed subtitles**: SRT/VTT files estimated from scene durations, plus burn-in for TikTok
 
 ## 📝 Script Format
 
@@ -257,10 +268,14 @@ Options:
   -c, --count INTEGER       Number of videos to generate [default: 1]
   -p, --platform PLATFORM   Target platform(s) [default: youtube, tiktok]
   -s, --script PATH         Path to existing script file
-  --skip-fetch              Skip fetching new stories
-  -e, --enhance             Enhance scripts with GPT
-  -t, --thumbnails          Generate thumbnail variants [default: True]
-  --subtitles               Generate subtitle files [default: True]
+  --skip-fetch              Compatibility flag (no-op): only existing scripts are used
+  -e, --enhance/--no-enhance
+                           Enhance scripts with GPT (paid call; quality approval
+                           still required with --no-enhance) [default: enhance]
+  -t, --thumbnails/--no-thumbnails
+                           Generate paid YouTube thumbnail variants [default: thumbnails]
+  --subtitles/--no-subtitles
+                           Generate SRT/VTT and burn TikTok captions [default: subtitles]
   -m, --music PATH          Path to background music file
 ```
 

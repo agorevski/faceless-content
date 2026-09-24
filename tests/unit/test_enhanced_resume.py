@@ -7,10 +7,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from faceless.clients.azure_openai import AzureOpenAIClient
 from faceless.core.enums import JobStatus, Niche, Platform
 from faceless.core.exceptions import CheckpointError, VideoAssemblyError
 from faceless.core.models import Checkpoint, JobResult, Scene, Script, VisualStyle
 from faceless.pipeline.orchestrator import Orchestrator
+from faceless.services.quality_service import HookAnalysis, QualityScore
 
 
 @dataclass
@@ -18,6 +20,7 @@ class ResumeHarness:
     orchestrator: Orchestrator
     settings: MagicMock
     enhancer: MagicMock
+    quality: MagicMock
     images: MagicMock
     audio: MagicMock
     video: MagicMock
@@ -65,6 +68,7 @@ def resume_harness(tmp_path: Path) -> ResumeHarness:
         patch("faceless.pipeline.orchestrator.get_settings") as get_settings,
         patch("faceless.pipeline.orchestrator.AzureOpenAIClient"),
         patch("faceless.pipeline.orchestrator.EnhancerService") as enhancer_class,
+        patch("faceless.pipeline.orchestrator.QualityService") as quality_class,
         patch("faceless.pipeline.orchestrator.ImageService") as images_class,
         patch("faceless.pipeline.orchestrator.TTSService") as audio_class,
         patch("faceless.pipeline.orchestrator.VideoService") as video_class,
@@ -79,6 +83,7 @@ def resume_harness(tmp_path: Path) -> ResumeHarness:
         orchestrator = Orchestrator()
         orchestrator._client.generate_image.return_value = b"thumbnail"
         enhancer = enhancer_class.return_value
+        quality = quality_class.return_value
         images = images_class.return_value
         audio = audio_class.return_value
         video = video_class.return_value
@@ -146,6 +151,24 @@ def resume_harness(tmp_path: Path) -> ResumeHarness:
         return path
 
     enhancer.enhance_script.side_effect = enhance_script
+
+    def evaluate_quality(script: Script, strict_mode: bool) -> QualityScore:
+        assert strict_mode is True
+        return QualityScore(
+            script_title=script.title,
+            niche=script.niche,
+            overall_score=8.5,
+            hook_score=8.0,
+            hook_analysis=HookAnalysis(
+                score=8.0,
+                hook_type="story",
+                attention_grab=0.8,
+                curiosity_gap=0.8,
+            ),
+            approved_for_production=True,
+        )
+
+    quality.evaluate_script.side_effect = evaluate_quality
     images.generate_for_script.side_effect = generate_images
     audio.generate_for_script.side_effect = generate_audio
     audio.update_scene_durations.side_effect = update_durations
@@ -154,6 +177,7 @@ def resume_harness(tmp_path: Path) -> ResumeHarness:
         orchestrator,
         settings,
         enhancer,
+        quality,
         images,
         audio,
         video,
@@ -165,9 +189,8 @@ def resume_harness(tmp_path: Path) -> ResumeHarness:
     )
 
 
-@pytest.mark.parametrize("resume_enhance", [False, True])
 def test_resume_restores_exact_enhancement_without_paid_calls(
-    resume_harness: ResumeHarness, resume_enhance: bool
+    resume_harness: ResumeHarness,
 ) -> None:
     harness = resume_harness
     original_bytes = harness.source_path.read_bytes()
@@ -177,19 +200,30 @@ def test_resume_restores_exact_enhancement_without_paid_calls(
     first = harness.run()
     assert not first.success
     checkpoint = Checkpoint.load(harness.checkpoint_path)
-    assert checkpoint.enhanced_script == harness.enhanced
-    assert checkpoint.completed_steps == ["enhance", "images", "audio"]
-    assert checkpoint.script_path == harness.source_path
+    snapshot = checkpoint.enhanced_script
+    assert snapshot is not None
+    assert snapshot.title == harness.enhanced.title
+    assert snapshot.visual_style == harness.enhanced.visual_style
+    assert [scene.narration for scene in snapshot.scenes] == [
+        scene.narration for scene in harness.enhanced.scenes
+    ]
+    assert [scene.duration_estimate for scene in snapshot.scenes] == [8.5, 9.5]
+    assert checkpoint.completed_steps == ["enhance", "quality", "images", "audio"]
+    assert checkpoint.script_path == harness.source_path.with_name(
+        "original-title_production.json"
+    )
+    assert Script.from_json_file(checkpoint.script_path) == snapshot
     assert list(harness.checkpoint_path.parent.glob("*.checkpoint.json")) == [
         harness.checkpoint_path
     ]
     requests = list(harness.asset_requests)
 
     harness.video.assemble_video.side_effect = assemble
-    resumed = harness.run(enhance=resume_enhance)
+    resumed = harness.run()
 
     assert resumed.success, resumed.errors
     harness.enhancer.enhance_script.assert_called_once()
+    harness.quality.evaluate_script.assert_called_once()
     assert harness.asset_requests == requests
     restored = harness.video.assemble_video.call_args.kwargs["script"]
     assert restored.title == harness.enhanced.title
@@ -197,7 +231,41 @@ def test_resume_restores_exact_enhancement_without_paid_calls(
     assert len(restored.scenes) == 2
     assert restored.scenes[1].duration_estimate == 9.5
     assert harness.source_path.read_bytes() == original_bytes
-    assert Checkpoint.load(harness.checkpoint_path).enhanced_script == harness.enhanced
+    assert Checkpoint.load(harness.checkpoint_path).enhanced_script == snapshot
+
+
+def test_no_enhance_cannot_resume_enhanced_checkpoint(
+    resume_harness: ResumeHarness,
+) -> None:
+    harness = resume_harness
+    assert harness.run().success
+    source_bytes = harness.source_path.read_bytes()
+    for service in (
+        harness.enhancer,
+        harness.quality,
+        harness.images,
+        harness.audio,
+        harness.video,
+    ):
+        service.reset_mock()
+
+    result = harness.run(enhance=False)
+
+    assert not result.success
+    assert "checkpoint uses an enhanced script" in result.errors[0]
+    harness.enhancer.enhance_script.assert_not_called()
+    harness.quality.evaluate_script.assert_not_called()
+    harness.images.generate_for_script.assert_not_called()
+    harness.audio.generate_for_script.assert_not_called()
+    harness.video.assemble_video.assert_not_called()
+    assert harness.source_path.read_bytes() == source_bytes
+    assert Checkpoint.load(harness.checkpoint_path).completed_steps == [
+        "enhance",
+        "quality",
+        "images",
+        "audio",
+        "videos",
+    ]
 
 
 def test_snapshot_is_durable_before_first_asset_generation(
@@ -210,7 +278,9 @@ def test_snapshot_is_durable_before_first_asset_generation(
     ) -> list[Path]:
         saved = Checkpoint.load(harness.checkpoint_path)
         assert saved.enhanced_script == harness.enhanced
-        assert saved.completed_steps == ["enhance"]
+        assert saved.completed_steps == ["enhance", "quality"]
+        assert saved.script_path.is_file()
+        assert Script.from_json_file(saved.script_path) == harness.enhanced
         raise KeyboardInterrupt
 
     original = harness.images.generate_for_script.side_effect
@@ -224,45 +294,117 @@ def test_snapshot_is_durable_before_first_asset_generation(
     harness.enhancer.enhance_script.assert_called_once()
 
 
+def test_strict_quality_rejection_preserves_source_and_blocks_assets(
+    resume_harness: ResumeHarness,
+) -> None:
+    harness = resume_harness
+    original_source = harness.source_path.read_bytes()
+
+    def reject_quality(script: Script, strict_mode: bool) -> QualityScore:
+        assert strict_mode is True
+        return QualityScore(
+            script_title=script.title,
+            niche=script.niche,
+            overall_score=5.0,
+            hook_score=6.0,
+            hook_analysis=HookAnalysis(
+                score=6.0,
+                hook_type="story",
+                attention_grab=0.5,
+                curiosity_gap=0.5,
+            ),
+            critical_issues=["Unverified factual claim"],
+            approved_for_production=False,
+        )
+
+    harness.quality.evaluate_script.side_effect = reject_quality
+
+    result = harness.run()
+
+    assert not result.success
+    assert "Script rejected by quality gate" in result.errors[0]
+    assert "minimum 7.0" in result.errors[0]
+    assert harness.source_path.read_bytes() == original_source
+    assert Checkpoint.load(harness.checkpoint_path).completed_steps == ["enhance"]
+    harness.enhancer.enhance_script.assert_called_once()
+    harness.quality.evaluate_script.assert_called_once()
+    harness.images.generate_for_script.assert_not_called()
+    harness.audio.generate_for_script.assert_not_called()
+    harness.video.assemble_video.assert_not_called()
+
+
 @pytest.mark.parametrize(
     "corruption",
     [
-        "missing_snapshot",
-        "invalid_snapshot",
+        "missing_production",
+        "invalid_production",
         "wrong_niche",
         "missing_marker",
         "invalid_json",
+        "invalid_metadata",
+        "missing_fingerprint",
+        "changed_source",
     ],
 )
-def test_corrupt_or_legacy_enhancement_fails_before_assets(
+def test_corrupt_checkpoint_or_production_fails_before_assets(
     resume_harness: ResumeHarness, corruption: str
 ) -> None:
     harness = resume_harness
     assert harness.run().success
     data = json.loads(harness.checkpoint_path.read_text(encoding="utf-8"))
-    if corruption == "missing_snapshot":
-        data.pop("enhanced_script")
-    elif corruption == "invalid_snapshot":
-        data["enhanced_script"]["scenes"] = []
+    production_path = Path(data["script_path"])
+    if corruption == "missing_production":
+        production_path.unlink()
+    elif corruption == "invalid_production":
+        production_path.write_text("invalid json", encoding="utf-8")
     elif corruption == "wrong_niche":
-        data["enhanced_script"]["niche"] = Niche.SCARY_STORIES.value
+        production = Script.from_json_file(production_path)
+        production.niche = Niche.SCARY_STORIES
+        production.to_json_file(production_path)
     elif corruption == "missing_marker":
         data["completed_steps"].remove("enhance")
-    harness.checkpoint_path.write_text(
-        "invalid json" if corruption == "invalid_json" else json.dumps(data),
-        encoding="utf-8",
-    )
-    for service in (harness.enhancer, harness.images, harness.audio, harness.video):
+        harness.checkpoint_path.write_text(json.dumps(data), encoding="utf-8")
+    elif corruption == "invalid_json":
+        harness.checkpoint_path.write_text("invalid json", encoding="utf-8")
+    elif corruption == "invalid_metadata":
+        data["enhanced_script"]["scenes"] = []
+        harness.checkpoint_path.write_text(json.dumps(data), encoding="utf-8")
+    elif corruption == "missing_fingerprint":
+        harness.checkpoint_path.with_name("original-title.source.json").unlink()
+    elif corruption == "changed_source":
+        changed = Script.from_json_file(harness.source_path)
+        changed.scenes[0].narration = "Different source narration"
+        changed.to_json_file(harness.source_path)
+    source_bytes = harness.source_path.read_bytes()
+    for service in (
+        harness.enhancer,
+        harness.quality,
+        harness.images,
+        harness.audio,
+        harness.video,
+    ):
         service.reset_mock()
 
-    result = harness.run(enhance=False)
+    result = harness.run()
 
     assert not result.success
-    assert "snapshot" in result.errors[0]
+    expected_error = {
+        "missing_production": "Approved production script is missing",
+        "invalid_production": "Production script recovery",
+        "wrong_niche": "niche",
+        "missing_marker": "quality approval without enhancement",
+        "invalid_json": "Invalid checkpoint",
+        "invalid_metadata": "Invalid checkpoint",
+        "missing_fingerprint": "fingerprint is missing",
+        "changed_source": "Source content differs",
+    }[corruption]
+    assert expected_error in result.errors[0]
     harness.enhancer.enhance_script.assert_not_called()
+    harness.quality.evaluate_script.assert_not_called()
     harness.images.generate_for_script.assert_not_called()
     harness.audio.generate_for_script.assert_not_called()
     harness.video.assemble_video.assert_not_called()
+    assert harness.source_path.read_bytes() == source_bytes
 
 
 def test_disabled_checkpointing_ignores_snapshot_and_regenerates(
@@ -283,23 +425,33 @@ def test_disabled_checkpointing_ignores_snapshot_and_regenerates(
     assert script.scenes[0].narration == "New enhancement"
 
 
-def test_enhancement_invalidates_unenhanced_asset_markers(
+def test_enhancement_rejects_unenhanced_asset_markers(
     resume_harness: ResumeHarness,
 ) -> None:
     harness = resume_harness
     assert harness.run(enhance=False).success
-    harness.enhanced.title = harness.source.title
-    harness.asset_requests.clear()
+    source_bytes = harness.source_path.read_bytes()
+    requests = list(harness.asset_requests)
+    for service in (
+        harness.enhancer,
+        harness.quality,
+        harness.images,
+        harness.audio,
+        harness.video,
+    ):
+        service.reset_mock()
 
     result = harness.run()
 
-    assert result.success, result.errors
-    assert harness.asset_requests == [
-        ("image", 1),
-        ("image", 2),
-        ("audio", 1),
-        ("audio", 2),
-    ]
+    assert not result.success
+    assert "quality approval without enhancement" in result.errors[0]
+    assert harness.asset_requests == requests
+    assert harness.source_path.read_bytes() == source_bytes
+    harness.enhancer.enhance_script.assert_not_called()
+    harness.quality.evaluate_script.assert_not_called()
+    harness.images.generate_for_script.assert_not_called()
+    harness.audio.generate_for_script.assert_not_called()
+    harness.video.assemble_video.assert_not_called()
 
 
 def test_atomic_checkpoint_failure_preserves_previous_file(
@@ -315,7 +467,7 @@ def test_atomic_checkpoint_failure_preserves_previous_file(
         patch.object(Path, "replace", side_effect=OSError("Disk error")),
         pytest.raises(CheckpointError, match="Cannot persist"),
     ):
-        harness.orchestrator._save_checkpoint(checkpoint, harness.enhanced)
+        harness.orchestrator._save_checkpoint(checkpoint, harness.source)
 
     assert harness.checkpoint_path.read_bytes() == previous
     assert list(harness.checkpoint_path.parent.glob("*.pending")) == []
@@ -353,33 +505,40 @@ def test_enhancer_mutation_does_not_change_callers_script(
     assert harness.source == original
 
 
-@pytest.mark.parametrize("has_snapshot", [False, True])
-def test_finds_legacy_checkpoint_saved_under_enhanced_title(
-    resume_harness: ResumeHarness, has_snapshot: bool
+@pytest.mark.parametrize("has_snapshot_metadata", [False, True])
+def test_ignores_checkpoint_saved_under_enhanced_title(
+    resume_harness: ResumeHarness, has_snapshot_metadata: bool
 ) -> None:
     harness = resume_harness
     assert harness.run().success
+    original_checkpoint = Checkpoint.load(harness.checkpoint_path)
     data = json.loads(harness.checkpoint_path.read_text(encoding="utf-8"))
-    if not has_snapshot:
+    if not has_snapshot_metadata:
         data.pop("enhanced_script")
     legacy_path = harness.checkpoint_path.with_name("a-better-title.checkpoint.json")
-    legacy_path.write_text(json.dumps(data), encoding="utf-8")
+    legacy_bytes = json.dumps(data).encode("utf-8")
+    legacy_path.write_bytes(legacy_bytes)
     harness.checkpoint_path.unlink()
     harness.enhancer.reset_mock()
     harness.images.reset_mock()
+    harness.quality.reset_mock()
+    prior_requests = list(harness.asset_requests)
 
     result = harness.run()
 
-    assert result.success is has_snapshot
-    harness.enhancer.enhance_script.assert_not_called()
-    if has_snapshot:
-        assert result.script_path is not None and result.script_path.is_file()
-        assert Script.from_json_file(result.script_path).title == harness.enhanced.title
-        assert harness.checkpoint_path.is_file()
-        assert Checkpoint.load(harness.checkpoint_path).script_path == harness.source_path
-    else:
-        assert "no script snapshot" in result.errors[0]
-        harness.images.generate_for_script.assert_not_called()
+    assert result.success, result.errors
+    assert harness.enhancer.enhance_script.call_count == 1
+    harness.quality.evaluate_script.assert_called_once()
+    assert harness.asset_requests[len(prior_requests) :] == prior_requests
+    assert legacy_path.read_bytes() == legacy_bytes
+    assert harness.checkpoint_path.is_file()
+    checkpoint = Checkpoint.load(harness.checkpoint_path)
+    assert checkpoint.job_id != original_checkpoint.job_id
+    assert checkpoint.script_path == harness.source_path.with_name(
+        "original-title_production.json"
+    )
+    assert result.script_path == checkpoint.script_path
+    assert Script.from_json_file(checkpoint.script_path).title == harness.enhanced.title
 
 
 def test_disabled_checkpointing_creates_no_checkpoint_files(
@@ -403,16 +562,38 @@ def test_optional_outputs_use_restored_enhanced_narration_and_measured_timing(
     original_source = harness.source_path.read_bytes()
     harness.video.assemble_video.reset_mock()
 
-    result = harness.orchestrator.run(
-        niche=harness.source.niche,
-        platforms=[Platform.YOUTUBE],
-        script_path=harness.source_path,
-        enhance=False,
-        thumbnails=True,
-        subtitles=True,
-    )[0]
+    def thumbnail_variants(
+        title: str,
+        niche: str,
+        base_name: str,
+        output_dir: Path,
+        client: AzureOpenAIClient,
+    ) -> list[Path]:
+        assert title == harness.enhanced.title
+        assert niche == harness.enhanced.niche.value
+        assert base_name == harness.enhanced.safe_title
+        assert client is harness.orchestrator._client
+        output_dir.mkdir(parents=True, exist_ok=True)
+        paths = [output_dir / f"variant_{number}.png" for number in (1, 2, 3)]
+        for path in paths:
+            path.write_bytes(b"thumbnail")
+        return paths
+
+    with patch(
+        "faceless.pipeline.orchestrator.generate_thumbnail_variants",
+        side_effect=thumbnail_variants,
+    ) as thumbnail_service:
+        result = harness.orchestrator.run(
+            niche=harness.source.niche,
+            platforms=[Platform.YOUTUBE],
+            script_path=harness.source_path,
+            enhance=True,
+            thumbnails=True,
+            subtitles=True,
+        )[0]
 
     assert result.success, result.errors
+    thumbnail_service.assert_called_once()
     assert len(result.thumbnail_paths) == 3
     subtitle_text = result.subtitle_paths["srt"].read_text(encoding="utf-8")
     assert "Enhanced narration 1" in subtitle_text

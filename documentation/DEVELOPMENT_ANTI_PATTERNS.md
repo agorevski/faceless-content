@@ -2,7 +2,7 @@
 
 This document identifies development anti-patterns found in the faceless-content repository. Each anti-pattern is documented with its location, impact, and recommended resolution.
 
-> **Last Review Date:** 2026-02-02
+> **Last Review Date:** 2026-09-24
 
 ---
 
@@ -17,51 +17,17 @@ This document identifies development anti-patterns found in the faceless-content
 
 ---
 
-## AP-016: Unimplemented TODO Stubs ⚠️ ACTIVE
+## AP-016: Unimplemented TODO Stubs (resolved)
 
-### Status: NEEDS ATTENTION
+### Status: RESOLVED
 **Severity:** Medium
-**Location:** `src/faceless/pipeline/orchestrator.py:311, 323`
+**Historical Location:** `src/faceless/pipeline/orchestrator.py`
 
 ### Description
-The orchestrator contains TODO comments for unimplemented thumbnail and subtitle generation. These stubs mark steps as completed without performing any actual work:
-
-```python
-# Step 5: Generate thumbnails (optional)
-if thumbnails and not errors and "thumbnails" not in checkpoint.completed_steps:
-    self.logger.info("Starting thumbnail generation...")
-    checkpoint.status = JobStatus.GENERATING_THUMBNAILS
-    # TODO: Implement thumbnail generation
-    checkpoint.completed_steps.append("thumbnails")  # ← Marked done with no work
-    self.logger.info("Thumbnail generation completed")
-
-# Step 6: Generate subtitles (optional)
-if subtitles and not errors and "subtitles" not in checkpoint.completed_steps:
-    self.logger.info("Starting subtitle generation...")
-    checkpoint.status = JobStatus.GENERATING_SUBTITLES
-    # TODO: Implement subtitle generation
-    checkpoint.completed_steps.append("subtitles")  # ← Marked done with no work
-    self.logger.info("Subtitle generation completed")
-```
-
-### Impact
-- Users may expect thumbnail/subtitle generation when passing `--thumbnails` or `--subtitles` flags
-- Checkpoint incorrectly records successful completion of these steps
-- Misleading log messages ("Thumbnail generation completed") when nothing was generated
-
-### Recommended Resolution
-1. Either implement the pending features, OR
-2. Remove the flags and code blocks if not planned, OR
-3. Log a warning indicating these features are not yet implemented
-
-```python
-# Better temporary pattern
-if thumbnails:
-    self.logger.warning(
-        "Thumbnail generation not yet implemented",
-        feature="thumbnails",
-    )
-```
+The orchestrator previously marked thumbnail and subtitle stages complete
+without generating output. It now calls the corresponding services, verifies
+the files exist, includes them in `JobResult`, and checkpoints each stage only
+after success. Failed or partial generation returns an explicit failure.
 
 ---
 

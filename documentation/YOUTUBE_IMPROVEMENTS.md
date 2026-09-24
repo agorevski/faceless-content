@@ -1,6 +1,6 @@
 # YouTube Content Quality Improvements
 
-> **Last Updated:** February 2026  
+> **Last Updated:** September 2026
 > **Status:** Core services implemented ✅
 
 ## Overview
@@ -12,7 +12,10 @@ This document outlines improvements to create exceptionally high-quality YouTube
 | Feature | Service | Status | CLI Command |
 |---------|---------|--------|-------------|
 | Deep Research | `DeepResearchService` | ✅ Implemented | `faceless research` |
-| Script Quality Scoring | `QualityService` | ✅ Implemented | `faceless quality` |
+| Script Quality Scoring | `QualityService` | ✅ Integrated before generation | `faceless quality`, `faceless generate` |
+| Opening hook and layout | `EnhancerService`, `VideoService` | ✅ Feedback-guided revision and first-frame render | `faceless generate` |
+| Composited thumbnails | `ThumbnailService` | ✅ Integrated for YouTube | `faceless generate` |
+| Portrait captions | `SubtitleService` | ✅ Burned into TikTok when subtitles are enabled | `faceless generate` |
 | Trending Topics | `TrendingService` | ✅ Implemented | `faceless trending` |
 | Multi-Video Planning | `ContentGraphService` | 🔲 Planned | - |
 | Expert Persona Review | `ExpertReviewService` | 🔲 Planned | - |
@@ -199,6 +202,25 @@ Auto-generate playlist structures:
 
 The `QualityService` provides automated quality checks before production.
 
+`faceless generate` now enhances the script by default, asks the quality service
+to apply all quality gates, and requires a hook score of at least 7/10 before
+any media is generated. A rejected script without critical issues can undergo
+up to two feedback-guided revisions and reassessments; if it still fails,
+production stops. `--no-enhance` retains the input wording and disables revision
+but **still** requires quality approval. The first scene opens with a short spoken
+hook, and FFmpeg lays its first sentence over the opening frames in safe areas.
+For YouTube outputs, three 16:9 image-and-text thumbnail variants are composed.
+Subtitle SRT/VTT files estimate word timings within the TTS-adjusted scenes
+but are not speech-aligned. TikTok gets readable, safe-area burnt captions
+when subtitles are enabled; YouTube keeps separate subtitle files.
+
+This is a production filter, not factual verification or an empirical
+retention guarantee. Research and independently verify factual assertions,
+review AI-generated images, and measure real audience performance after
+publication. Azure enhancement, assessment, images, narration, and thumbnails
+incur API costs; the generate command loads existing scripts rather than
+automatically running deep research.
+
 #### Quick Start
 
 ```bash
@@ -221,11 +243,11 @@ faceless quality output/script.json --output quality_report.json
 
 | Gate | Metric | Minimum Score | What It Measures |
 |------|--------|---------------|------------------|
-| **HOOK_QUALITY** | Hook effectiveness | 7.0/10 | First 30 seconds impact |
+| **HOOK_QUALITY** | Hook effectiveness | 7.0/10 | Opening impact (AI estimate) |
 | **NARRATIVE_FLOW** | Story structure | 6.0/10 | Transitions, pacing, arc |
 | **INFORMATION_DENSITY** | Facts per minute | 5.0/10 | Value delivery rate |
 | **ENGAGEMENT_POTENTIAL** | Viewer interaction | 5.0/10 | Comments, shares potential |
-| **FACTUAL_FOUNDATION** | Source quality | 6.0/10 | Claims with citations |
+| **FACTUAL_FOUNDATION** | Information score proxy | 6.0/10 | Not independent fact verification |
 
 #### Quality Thresholds
 

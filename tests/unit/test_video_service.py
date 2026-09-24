@@ -9,6 +9,9 @@ Tests cover:
 - Video assembly
 """
 
+import shutil
+import subprocess
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -24,14 +27,15 @@ class TestVideoService:
     """Tests for VideoService."""
 
     @pytest.fixture
-    def mock_settings(self):
+    def mock_settings(self, tmp_path: Path) -> Iterator[MagicMock]:
         """Mock settings."""
         with patch("faceless.services.video_service.get_settings") as mock:
             settings = MagicMock()
             settings.ffmpeg_path = "ffmpeg"
             settings.ffprobe_path = "ffprobe"
-            settings.get_videos_dir.return_value = Path("/tmp/videos")
-            settings.get_final_output_dir.return_value = Path("/tmp/final")
+            settings.get_images_dir.return_value = tmp_path / "images"
+            settings.get_videos_dir.return_value = tmp_path / "videos"
+            settings.get_final_output_dir.return_value = tmp_path / "final"
             settings.max_concurrent_videos = 2
             mock.return_value = settings
             yield settings
@@ -80,6 +84,18 @@ class TestVideoService:
 
             mock_run.assert_called_once()
             assert result.returncode == 0
+
+    def test_run_ffmpeg_does_not_use_shell_for_filter_text(self, mock_settings) -> None:
+        """An unresolved executable still receives an argv list, never a shell."""
+        from faceless.services.video_service import VideoService
+
+        with patch("faceless.services.video_service.shutil.which", return_value=None):
+            service = VideoService()
+        graph = "drawtext=text=hello\\; touch unexpected:expansion=none"
+        with patch("subprocess.run", return_value=MagicMock(returncode=0)) as run:
+            service._run_ffmpeg(["-filter_complex", graph])
+        assert run.call_args.args[0] == ["ffmpeg", "-filter_complex", graph]
+        assert run.call_args.kwargs["shell"] is False
 
     def test_run_ffmpeg_failure(self, video_service) -> None:
         """Test FFmpeg execution failure."""
@@ -414,6 +430,354 @@ class TestVideoService:
 
                 assert result is not None
 
+    def test_assemble_for_all_platforms_selects_matching_images(
+        self,
+        video_service,
+        mock_settings,
+        sample_scene: Scene,
+        tmp_path: Path,
+    ) -> None:
+        """The last generated image must not be reused for the other platform."""
+        script = Script(
+            title="Platform assets", niche=Niche.SCARY_STORIES, scenes=[sample_scene]
+        )
+        images_dir = tmp_path / "images" / script.safe_title
+        images_dir.mkdir(parents=True)
+        youtube_image = images_dir / "scene_01_youtube.png"
+        tiktok_image = images_dir / "scene_01_tiktok.png"
+        youtube_image.write_bytes(b"landscape")
+        tiktok_image.write_bytes(b"portrait")
+        sample_scene.image_path = tiktok_image
+
+        with (
+            patch("subprocess.run", return_value=MagicMock(returncode=0)) as run,
+            patch("shutil.copy2"),
+        ):
+            outputs = video_service.assemble_for_all_platforms(
+                script, [Platform.YOUTUBE, Platform.TIKTOK]
+            )
+
+        commands = [
+            args
+            for call in run.call_args_list
+            if isinstance(args := call.args[0], list)
+            and "-filter_complex" in args
+            and "scene_01_" in args[-1]
+        ]
+        assert list(outputs) == [Platform.YOUTUBE, Platform.TIKTOK]
+        assert [Path(args[args.index("-i") + 1]) for args in commands] == [
+            youtube_image,
+            tiktok_image,
+        ]
+        assert sample_scene.image_path == tiktok_image
+
+    @pytest.mark.parametrize("platform", [Platform.YOUTUBE, Platform.TIKTOK])
+    @pytest.mark.parametrize("image_path_is_missing", [False, True])
+    def test_assemble_video_resume_resolves_image_for_pending_scene(
+        self,
+        video_service,
+        mock_settings,
+        sample_scene: Scene,
+        tmp_path: Path,
+        platform: Platform,
+        image_path_is_missing: bool,
+    ) -> None:
+        """A completed scene needs no image; a pending one uses its own platform."""
+        from uuid import uuid4
+
+        sample_scene.image_path = None
+        second = Scene(
+            scene_number=2,
+            narration="Next scene",
+            image_prompt="Next image",
+            audio_path=sample_scene.audio_path,
+        )
+        script = Script(
+            title="Resume assets",
+            niche=Niche.SCARY_STORIES,
+            scenes=[sample_scene, second],
+        )
+        images_dir = tmp_path / "images" / script.safe_title
+        images_dir.mkdir(parents=True)
+        expected = images_dir / f"scene_02_{platform.value}.png"
+        other = images_dir / (
+            f"scene_02_{Platform.TIKTOK.value if platform == Platform.YOUTUBE else Platform.YOUTUBE.value}.png"
+        )
+        expected.write_bytes(b"requested")
+        other.write_bytes(b"other platform")
+        second.image_path = None if image_path_is_missing else other
+        checkpoint = Checkpoint(
+            job_id=uuid4(),
+            script_path=tmp_path / "script.json",
+            status=JobStatus.ASSEMBLING_VIDEO,
+        )
+        checkpoint.mark_video_done(platform.value, 1)
+        video_dir = tmp_path / "videos" / script.safe_title
+        video_dir.mkdir(parents=True)
+        (video_dir / f"scene_01_{platform.value}.mp4").write_bytes(b"already rendered")
+
+        with (
+            patch("subprocess.run", return_value=MagicMock(returncode=0)) as run,
+            patch("shutil.copy2"),
+        ):
+            video_service.assemble_video(script, platform, checkpoint=checkpoint)
+
+        commands = [
+            args
+            for call in run.call_args_list
+            if isinstance(args := call.args[0], list) and "-filter_complex" in args
+        ]
+        assert len(commands) == 1
+        assert Path(commands[0][commands[0].index("-i") + 1]) == expected
+        assert checkpoint.is_video_done(platform.value, 2)
+
+    @pytest.mark.parametrize("platform", [Platform.YOUTUBE, Platform.TIKTOK])
+    def test_assemble_video_uses_matching_sibling_from_moved_image_dir(
+        self,
+        video_service,
+        sample_scene: Scene,
+        tmp_path: Path,
+        platform: Platform,
+    ) -> None:
+        """Resume still works when the images directory has moved since generation."""
+        script = Script(
+            title="Moved assets", niche=Niche.SCARY_STORIES, scenes=[sample_scene]
+        )
+        archive = tmp_path / "archived-images"
+        archive.mkdir()
+        expected = archive / f"scene_01_{platform.value}.png"
+        other_platform = (
+            Platform.TIKTOK if platform == Platform.YOUTUBE else Platform.YOUTUBE
+        )
+        other = archive / f"scene_01_{other_platform.value}.png"
+        expected.write_bytes(b"requested")
+        other.write_bytes(b"other platform")
+        sample_scene.image_path = other
+
+        with (
+            patch("subprocess.run", return_value=MagicMock(returncode=0)) as run,
+            patch("shutil.copy2"),
+        ):
+            video_service.assemble_video(script, platform)
+
+        command = next(
+            args
+            for call in run.call_args_list
+            if isinstance(args := call.args[0], list) and "-filter_complex" in args
+        )
+        assert Path(command[command.index("-i") + 1]) == expected
+
+    @pytest.mark.parametrize("platform", [Platform.YOUTUBE, Platform.TIKTOK])
+    def test_assemble_video_rejects_other_platform_image(
+        self,
+        video_service,
+        sample_scene: Scene,
+        tmp_path: Path,
+        platform: Platform,
+    ) -> None:
+        """Never stretch a different platform's asset if the requested one is missing."""
+        other_platform = (
+            Platform.TIKTOK if platform == Platform.YOUTUBE else Platform.YOUTUBE
+        )
+        other = tmp_path / f"scene_01_{other_platform.value}.png"
+        other.write_bytes(b"wrong orientation")
+        sample_scene.image_path = other
+        script = Script(
+            title="Missing image", niche=Niche.SCARY_STORIES, scenes=[sample_scene]
+        )
+
+        with (
+            patch("subprocess.run") as run,
+            pytest.raises(
+                VideoAssemblyError,
+                match=f"Image not found for scene 1 on {platform.value}",
+            ),
+        ):
+            video_service.assemble_video(script, platform)
+        run.assert_not_called()
+
+    @pytest.mark.parametrize("platform", [Platform.YOUTUBE, Platform.TIKTOK])
+    def test_assemble_video_burns_hook_into_first_scene_only(
+        self,
+        video_service,
+        mock_settings,
+        sample_scene,
+        tmp_path: Path,
+        platform: Platform,
+    ) -> None:
+        """Parallel assembly renders source narration only in the opening scene."""
+        sample_scene.narration = "What's behind the locked door at 9:30?"
+        second = Scene(
+            scene_number=2,
+            narration="The story continues after the opening.",
+            image_prompt="Another image",
+            duration_estimate=8.0,
+            image_path=sample_scene.image_path,
+            audio_path=sample_scene.audio_path,
+        )
+        script = Script(
+            title="Two scenes",
+            niche=Niche.SCARY_STORIES,
+            scenes=[sample_scene, second],
+        )
+        mock_settings.get_videos_dir.return_value = tmp_path / "videos"
+        mock_settings.get_final_output_dir.return_value = tmp_path / "final"
+
+        with (
+            patch("subprocess.run", return_value=MagicMock(returncode=0)) as run,
+            patch("shutil.copy2"),
+        ):
+            video_service.assemble_video(script, platform)
+
+        filters = {
+            Path(args[-1]).name: args[args.index("-filter_complex") + 1]
+            for call in run.call_args_list
+            if isinstance(args := call.args[0], list) and "-filter_complex" in args
+        }
+        first = filters[f"scene_01_{platform.value}.mp4"]
+        second_filter = filters[f"scene_02_{platform.value}.mp4"]
+        width, height = platform.resolution
+        left = round(width * (0.15 if platform == Platform.TIKTOK else 0.10))
+        right = round(width * (0.20 if platform == Platform.TIKTOK else 0.10))
+
+        assert f"scale={width}:{height}" in first
+        assert f"x=({width - left - right}-text_w)/2+{left}" in first
+        assert "zoompan=" in first
+        assert first.count("drawtext=") >= 1
+        assert "enable='between(t,0.0,3.0)'" in first
+        assert "box=1" in first
+        assert "drawtext=" not in second_filter
+
+    def test_assemble_video_surfaces_overlay_failure(
+        self,
+        video_service,
+        mock_settings,
+        sample_scene,
+        tmp_path: Path,
+    ) -> None:
+        """A drawtext failure must fail assembly rather than silently omit the hook."""
+        script = Script(
+            title="Hook failure", niche=Niche.SCARY_STORIES, scenes=[sample_scene]
+        )
+        mock_settings.get_videos_dir.return_value = tmp_path / "videos"
+        mock_settings.get_final_output_dir.return_value = tmp_path / "final"
+
+        def fail_drawtext(*args: object, **kwargs: object) -> MagicMock:
+            command = args[0]
+            assert isinstance(command, list)
+            assert "-filter_complex" in command
+            return MagicMock(
+                returncode=1, stdout="", stderr="drawtext font unavailable"
+            )
+
+        with (
+            patch("subprocess.run", side_effect=fail_drawtext),
+            pytest.raises(VideoAssemblyError, match="drawtext font unavailable"),
+        ):
+            video_service.assemble_video(script, Platform.YOUTUBE)
+
+    @pytest.mark.skipif(
+        not shutil.which("ffmpeg") or not shutil.which("ffprobe"),
+        reason="FFmpeg or FFprobe unavailable",
+    )
+    @pytest.mark.parametrize("platform", [Platform.YOUTUBE, Platform.TIKTOK])
+    def test_assemble_video_renders_visible_opening(
+        self,
+        video_service,
+        mock_settings,
+        tmp_path: Path,
+        platform: Platform,
+    ) -> None:
+        """Render a real black scene and verify visible text in the safe top area."""
+        width, height = platform.resolution
+        image = tmp_path / "black.ppm"
+        image.write_bytes(b"P6\n64 64\n255\n" + b"\x00\x00\x00" * (64 * 64))
+        audio = tmp_path / "quiet.mp3"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "anullsrc=r=44100:cl=mono",
+                "-t",
+                "0.4",
+                "-q:a",
+                "9",
+                str(audio),
+            ],
+            capture_output=True,
+            check=True,
+            timeout=30,
+        )
+        scene = Scene(
+            scene_number=1,
+            narration="What's at 9:30? 100% true.",
+            image_prompt="Black background",
+            duration_estimate=0.4,
+            image_path=image,
+            audio_path=audio,
+        )
+        script = Script(title="Visible hook", niche=Niche.SCARY_STORIES, scenes=[scene])
+        mock_settings.get_videos_dir.return_value = tmp_path / "videos"
+        mock_settings.get_final_output_dir.return_value = tmp_path / "final"
+
+        output = video_service.assemble_video(script, platform)
+        assert output.exists()
+        probe = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=width,height",
+                "-of",
+                "csv=p=0",
+                str(output),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=30,
+        )
+        assert probe.stdout.strip() == f"{width},{height}"
+        frame = subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-i",
+                str(output),
+                "-frames:v",
+                "1",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "gray",
+                "-",
+            ],
+            capture_output=True,
+            check=True,
+            timeout=30,
+        ).stdout
+        assert len(frame) == width * height
+        left = round(width * (0.15 if platform == Platform.TIKTOK else 0.10))
+        right = round(width * (0.20 if platform == Platform.TIKTOK else 0.10))
+        assert any(
+            max(frame[y * width + left : y * width + width - right]) > 80
+            for y in range(height // 10, height // 2)
+        )
+        assert (
+            max(frame[height * 4 // 5 * width : height * 4 // 5 * width + width]) < 30
+        )
+
     def test_assemble_video_with_checkpoint_skip(
         self, video_service, mock_settings, sample_scene, tmp_path: Path
     ) -> None:
@@ -489,6 +853,26 @@ class TestVideoService:
             result = video_service.get_video_duration(video_path)
 
             assert result == 60.5
+
+    def test_get_video_duration_unresolved_executable_uses_argv(
+        self, mock_settings
+    ) -> None:
+        """Probing a path never interpolates it into a shell command."""
+        from faceless.services.video_service import VideoService
+
+        unsafe_path = Path('video"; unexpected-command ".mp4')
+        with (
+            patch("faceless.services.video_service.shutil.which", return_value=None),
+            patch(
+                "subprocess.run",
+                return_value=MagicMock(returncode=0, stdout="1.0\n", stderr=""),
+            ) as run,
+        ):
+            service = VideoService()
+            assert service.get_video_duration(unsafe_path) == 1.0
+        assert run.call_args.args[0][0] == "ffprobe"
+        assert run.call_args.args[0][-1] == str(unsafe_path)
+        assert run.call_args.kwargs["shell"] is False
 
     def test_get_video_duration_failure(self, video_service, tmp_path: Path) -> None:
         """Test getting video duration with error."""

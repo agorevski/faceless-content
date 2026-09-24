@@ -140,6 +140,41 @@ class TestGenerateCommand:
             result = runner.invoke(app, ["generate", "scary-stories", "--enhance"])
 
         assert result.exit_code == 0
+        mock_pipeline[1].run.assert_called_once()
+        assert mock_pipeline[1].run.call_args.kwargs["enhance"] is True
+
+    def test_generate_defaults_to_enhance_and_assets(self, mock_pipeline) -> None:
+        """Default generation opts into quality and production assets."""
+        with patch("faceless.cli.commands.setup_logging"):
+            result = runner.invoke(app, ["generate", "finance"])
+
+        assert result.exit_code == 0
+        options = mock_pipeline[1].run.call_args.kwargs
+        assert options["enhance"] is True
+        assert options["thumbnails"] is True
+        assert options["subtitles"] is True
+
+    def test_generate_explicitly_disables_enhancement_and_assets(
+        self, mock_pipeline
+    ) -> None:
+        """CLI opt-outs reach the orchestrator unchanged."""
+        with patch("faceless.cli.commands.setup_logging"):
+            result = runner.invoke(
+                app,
+                [
+                    "generate",
+                    "finance",
+                    "--no-enhance",
+                    "--no-thumbnails",
+                    "--no-subtitles",
+                ],
+            )
+
+        assert result.exit_code == 0
+        options = mock_pipeline[1].run.call_args.kwargs
+        assert options["enhance"] is False
+        assert options["thumbnails"] is False
+        assert options["subtitles"] is False
 
     def test_generate_with_thumbnails_disabled(
         self, mock_pipeline: tuple[MagicMock, MagicMock]
@@ -174,6 +209,21 @@ class TestGenerateCommand:
         result = runner.invoke(app, ["generate", "--help"])
         assert result.exit_code == 0
         assert "niche" in result.output.lower()
+        assert "--no-enhance" in result.output
+        assert "paid AI call" in result.output
+        help_text = " ".join(result.output.replace("│", " ").split())
+        assert "does not fetch new content" in help_text
+        assert "Compatibility flag (no-op)" in help_text
+        assert "safe-area captions into TikTok videos" in help_text
+        assert "fetch content" not in help_text
+
+    def test_skip_fetch_is_a_compatibility_flag(self, mock_pipeline) -> None:
+        """The legacy switch still works but does not change orchestration."""
+        with patch("faceless.cli.commands.setup_logging"):
+            result = runner.invoke(app, ["generate", "finance", "--skip-fetch"])
+
+        assert result.exit_code == 0
+        mock_pipeline[1].run.assert_called_once()
 
     @pytest.mark.parametrize("outcome", ["empty", "failure", "partial"])
     def test_generate_unsuccessful_exit_status(
@@ -236,7 +286,10 @@ class TestGenerateCommand:
                 script_path=script_path,
                 video_paths={"youtube": Path("video.mp4")},
                 thumbnail_paths=[Path("thumb_v1.png")],
-                subtitle_paths={"srt": Path("captions.srt"), "vtt": Path("captions.vtt")},
+                subtitle_paths={
+                    "srt": Path("captions.srt"),
+                    "vtt": Path("captions.vtt"),
+                },
             )
         ]
 
@@ -249,6 +302,27 @@ class TestGenerateCommand:
         assert "thumb_v1.png" in result.output
         assert "captions.srt" in result.output
         assert "captions.vtt" in result.output
+
+    def test_generate_lists_production_script_before_media(
+        self, mock_pipeline: tuple[MagicMock, MagicMock], tmp_path: Path
+    ) -> None:
+        """A failed media step still reports the saved production script path."""
+        script_path = tmp_path / "story_production.json"
+        script_path.write_text("{}", encoding="utf-8")
+        mock_pipeline[1].run.return_value = [
+            JobResult(
+                success=False,
+                script_path=script_path,
+                errors=["Image generation failed"],
+            )
+        ]
+
+        with patch("faceless.cli.commands.setup_logging"):
+            result = runner.invoke(app, ["generate", "finance"])
+
+        assert result.exit_code == 1
+        assert "Output files:" in result.output
+        assert str(script_path) in result.output.replace("\n", "")
 
 
 class TestValidateCommand:

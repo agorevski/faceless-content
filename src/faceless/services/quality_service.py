@@ -9,11 +9,13 @@ expensive generation stages.
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from math import isfinite
 from typing import Any
 
 from faceless.clients.azure_openai import AzureOpenAIClient
 from faceless.config import get_settings
 from faceless.core.enums import Niche
+from faceless.core.exceptions import AzureOpenAIError, PipelineError
 from faceless.core.models import Script
 from faceless.utils.logging import LoggerMixin
 
@@ -473,16 +475,51 @@ Return JSON with:
 }}"""
 
         try:
-            return self._client.chat_json(
+            analysis = self._client.chat_json(
                 system_prompt=QUALITY_SYSTEM_PROMPT,
                 user_prompt=prompt,
                 temperature=0.5,
                 max_tokens=2000,
             )
-
-        except Exception as e:
+        except (AzureOpenAIError, ValueError) as e:
             self.logger.error("Quality analysis failed", error=str(e))
-            return {}
+            raise PipelineError("Quality analysis failed; production cannot proceed") from e
+
+        self._validate_analysis(analysis)
+        return analysis
+
+    def _validate_analysis(self, analysis: Any) -> None:
+        """Reject incomplete or implausible assessments before applying gates."""
+        if not isinstance(analysis, dict):
+            raise PipelineError("Quality analysis must be a JSON object")
+
+        hook = analysis.get("hook_analysis")
+        engagement = analysis.get("engagement_analysis")
+        if not isinstance(hook, dict) or not isinstance(engagement, dict):
+            raise PipelineError("Quality analysis is missing hook or engagement scores")
+
+        for name, section, maximum in (
+            ("hook_analysis.score", hook, 10.0),
+            ("engagement_analysis.comment_trigger_score", engagement, 10.0),
+            ("narrative_score", analysis, 10.0),
+            ("information_score", analysis, 10.0),
+            ("overall_score", analysis, 10.0),
+        ):
+            key = name.rsplit(".", 1)[-1]
+            value = section.get(key)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not isfinite(value)
+                or not 0 <= value <= maximum
+            ):
+                raise PipelineError(f"Quality analysis has invalid {name}")
+
+        issues = analysis.get("critical_issues")
+        if not isinstance(issues, list) or any(
+            not isinstance(issue, str) for issue in issues
+        ):
+            raise PipelineError("Quality analysis has invalid critical_issues")
 
     def _build_quality_score(
         self,

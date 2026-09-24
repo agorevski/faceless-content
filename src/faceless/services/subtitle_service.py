@@ -6,11 +6,14 @@ Supports word-level timestamps for animated captions (TikTok style)
 """
 
 import json
+import math
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
 
 from faceless.config import get_settings
+from faceless.core.exceptions import FFmpegError, InputValidationError
 from faceless.utils.logging import get_logger
 from faceless.utils.media import probe_media_duration
 
@@ -52,6 +55,90 @@ SUBTITLE_STYLES: dict[str, dict[str, Any]] = {
         "alignment": 2,
     },
 }
+
+_ASS_STYLE_FIELDS = {
+    "font_name": "FontName",
+    "font_size": "FontSize",
+    "primary_color": "PrimaryColour",
+    "outline_color": "OutlineColour",
+    "back_color": "BackColour",
+    "outline_width": "Outline",
+    "shadow": "Shadow",
+    "margin_l": "MarginL",
+    "margin_r": "MarginR",
+    "margin_v": "MarginV",
+    "alignment": "Alignment",
+    "play_res_x": "PlayResX",
+    "play_res_y": "PlayResY",
+}
+
+
+def portrait_caption_style(niche: str) -> dict[str, Any]:
+    """Return ASS overrides for captions in a 1080x1920 portrait video.
+
+    The right margin leaves space for TikTok controls; captions occupy the
+    middle-lower area, away from both the opening hook and bottom UI.
+    """
+    style = SUBTITLE_STYLES.get(niche, SUBTITLE_STYLES["scary-stories"]).copy()
+    style.update(
+        font_size=74,
+        primary_color="&H00FFFFFF",
+        outline_color="&H00000000",
+        back_color="&H80000000",
+        outline_width=5,
+        shadow=2,
+        alignment=2,
+        margin_l=90,
+        margin_r=240,
+        margin_v=520,
+        play_res_x=1080,
+        play_res_y=1920,
+    )
+    return style
+
+
+def _escape_filter_value(value: str) -> str:
+    """Escape an AVOption value and then the containing FFmpeg filtergraph."""
+    option_value = re.sub(r"([\\':])", r"\\\1", value)
+    return re.sub(r"([\\',;\[\]])", r"\\\1", option_value)
+
+
+def _validated_style(style: dict[str, Any]) -> str:
+    """Serialize supported ASS overrides without accepting filter syntax."""
+    fields: list[str] = []
+    for key, value in style.items():
+        if key not in _ASS_STYLE_FIELDS:
+            raise InputValidationError("Unsupported subtitle style", field=key)
+        if key == "font_name":
+            if not isinstance(value, str) or not re.fullmatch(r"[\w .-]{1,80}", value):
+                raise InputValidationError("Invalid subtitle font", field=key)
+        elif key.endswith("_color"):
+            if not isinstance(value, str) or not re.fullmatch(
+                r"&H[0-9A-Fa-f]{8}", value
+            ):
+                raise InputValidationError("Invalid ASS color", field=key)
+        elif (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not 0 <= value <= 3840
+            or not math.isfinite(value)
+        ):
+            raise InputValidationError("Invalid subtitle style value", field=key)
+        elif key in {"font_size", "play_res_x", "play_res_y"} and value == 0:
+            raise InputValidationError("Subtitle size must be positive", field=key)
+        elif key in {
+            "alignment",
+            "margin_l",
+            "margin_r",
+            "margin_v",
+            "play_res_x",
+            "play_res_y",
+        } and not isinstance(value, int):
+            raise InputValidationError("Subtitle style requires an integer", field=key)
+        elif key == "alignment" and value not in range(1, 10):
+            raise InputValidationError("Invalid subtitle alignment", field=key)
+        fields.append(f"{_ASS_STYLE_FIELDS[key]}={value}")
+    return ",".join(fields)
 
 
 def format_timestamp_srt(seconds: float) -> str:
@@ -98,6 +185,16 @@ def create_subtitles_from_script(
     Returns:
         Tuple of (SRT path, VTT path)
     """
+    if (
+        isinstance(words_per_subtitle, bool)
+        or not isinstance(words_per_subtitle, int)
+        or words_per_subtitle < 1
+    ):
+        raise InputValidationError(
+            "words_per_subtitle must be a positive integer",
+            field="words_per_subtitle",
+            value=words_per_subtitle,
+        )
     script_path = Path(script_path)
     with open(script_path, encoding="utf-8") as f:
         script = json.load(f)
@@ -240,56 +337,97 @@ def burn_subtitles_to_video(
 
     Args:
         video_path: Input video path
-        subtitle_path: SRT or ASS subtitle file
+        subtitle_path: SRT, VTT, or ASS subtitle file
         output_path: Output video path
         niche: Content niche for styling
-        style_override: Optional style overrides
+        style_override: Optional ASS style overrides (use portrait_caption_style
+            for 1080x1920 TikTok videos).
 
     Returns:
         Path to video with burned subtitles
+
+    Raises:
+        InputValidationError: If input paths, output path, or style are invalid.
+        FFmpegError: If FFmpeg fails, times out, or produces no output.
     """
+    video_path = Path(video_path)
+    subtitle_path = Path(subtitle_path)
+    output_path = Path(output_path)
+    for field, path in (("video_path", video_path), ("subtitle_path", subtitle_path)):
+        if not path.is_file():
+            raise InputValidationError("Input must be an existing file", field=field)
+    if subtitle_path.suffix.lower() not in {".srt", ".vtt", ".ass"}:
+        raise InputValidationError("Unsupported subtitle format", field="subtitle_path")
+    if output_path.resolve() in {video_path.resolve(), subtitle_path.resolve()}:
+        raise InputValidationError(
+            "Output must differ from inputs", field="output_path"
+        )
+    if output_path.exists() and not output_path.is_file():
+        raise InputValidationError("Output must be a file", field="output_path")
+    if not output_path.suffix:
+        raise InputValidationError(
+            "Output must have a video extension", field="output_path"
+        )
+
     style = SUBTITLE_STYLES.get(niche, SUBTITLE_STYLES["scary-stories"]).copy()
-    if style_override:
+    if style_override is not None:
         style.update(style_override)
 
-    # Escape the subtitle path for FFmpeg filter
-    safe_sub_path = str(subtitle_path).replace("\\", "/").replace(":", "\\:")
-
-    # Build style string
-    style_str = (
-        f"FontName={style['font_name']},"
-        f"FontSize={style['font_size']},"
-        f"PrimaryColour={style['primary_color']},"
-        f"OutlineColour={style['outline_color']},"
-        f"BackColour={style['back_color']},"
-        f"Outline={style['outline_width']},"
-        f"Shadow={style['shadow']},"
-        f"MarginV={style['margin_v']},"
-        f"Alignment={style['alignment']}"
+    style_str = _validated_style(style)
+    filter_spec = (
+        f"subtitles=filename={_escape_filter_value(str(subtitle_path.resolve()))}"
+        f":force_style={_escape_filter_value(style_str)}"
     )
-
+    try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise InputValidationError(
+            "Cannot create output directory", field="output_path"
+        ) from exc
     cmd = [
         "ffmpeg",
         "-y",
+        "-loglevel",
+        "error",
         "-i",
-        str(video_path),
+        str(video_path.resolve()),
         "-vf",
-        f"subtitles='{safe_sub_path}':force_style='{style_str}'",
+        filter_spec,
         "-c:a",
         "copy",
-        str(output_path),
+        str(output_path.resolve()),
     ]
 
     logger.info(
         "Burning subtitles into video",
         video=str(video_path),
         subtitle=str(subtitle_path),
+        output=str(output_path),
     )
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    except subprocess.TimeoutExpired as exc:
+        logger.error("FFmpeg subtitle burn timed out", output=str(output_path))
+        raise FFmpegError("FFmpeg subtitle burn timed out", command=cmd) from exc
+    except OSError as exc:
+        logger.error("FFmpeg subtitle burn could not start", error=str(exc))
+        raise FFmpegError("FFmpeg subtitle burn could not start", command=cmd) from exc
 
     if result.returncode != 0:
-        logger.error("FFmpeg subtitle burn failed", error=result.stderr[:200])
-        raise RuntimeError(f"FFmpeg subtitle burn failed: {result.stderr}")
+        logger.error(
+            "FFmpeg subtitle burn failed",
+            return_code=result.returncode,
+            error=result.stderr[-500:],
+        )
+        raise FFmpegError(
+            "FFmpeg subtitle burn failed",
+            command=cmd,
+            return_code=result.returncode,
+            stderr=result.stderr,
+        )
+    if not output_path.is_file() or output_path.stat().st_size == 0:
+        logger.error("FFmpeg subtitle burn produced no video", output=str(output_path))
+        raise FFmpegError("FFmpeg subtitle burn produced no video", command=cmd)
 
     logger.info("Created video with subtitles", path=str(output_path))
     return Path(output_path)

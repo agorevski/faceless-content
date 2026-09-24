@@ -4,9 +4,11 @@ Text Overlay Module
 
 
 Generates text overlay configurations for hooks, CTAs, and engagement elements
-Designed for FFmpeg subtitle/text filter integration
+and renders them through FFmpeg drawtext filters.
 """
 
+import re
+import textwrap
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -71,6 +73,8 @@ class TextOverlay:
     style: TextStyle = field(default_factory=TextStyle)
     animation: TextAnimation = TextAnimation.FADE_IN_OUT
     layer: int = 1  # For z-ordering multiple overlays
+    x: str | None = None
+    y: str | None = None
 
 
 # =============================================================================
@@ -181,6 +185,79 @@ def create_hook_overlay(
         style=style,
         animation=TextAnimation.FADE_IN_OUT,
     )
+
+
+def create_opening_hook_overlays(
+    narration: str,
+    duration: float,
+    video_width: int,
+    video_height: int,
+) -> list[TextOverlay]:
+    """Lay out the first spoken words above the caption area.
+
+    The first line is larger than the remaining lines. For portrait videos the
+    text also stays left of the platform's right-hand interaction controls.
+    """
+    opening_words: list[str] = []
+    for word in narration.split()[:10]:
+        if opening_words and len(" ".join(opening_words)) + len(word) + 1 > 80:
+            break
+        opening_words.append(word[:80] if not opening_words else word)
+        if re.search(r"[!?][\"')\]]?$", word) or (
+            len(opening_words) >= 3 and re.search(r"\.[\"')\]]?$", word)
+        ):
+            break
+    opening = " ".join(opening_words)
+    if not opening or duration <= 0:
+        return []
+
+    portrait = video_height > video_width
+    left_margin = round(video_width * (0.15 if portrait else 0.10))
+    right_margin = round(video_width * (0.20 if portrait else 0.10))
+    safe_width = video_width - left_margin - right_margin
+    first_width, rest_width = (12, 17) if portrait else (24, 30)
+    lines = textwrap.wrap(
+        opening,
+        width=first_width,
+        break_long_words=True,
+        break_on_hyphens=False,
+    )
+    if len(lines) > 1:
+        lines = [lines[0]] + textwrap.wrap(
+            opening[len(lines[0]) :].strip(),
+            width=rest_width,
+            break_long_words=True,
+            break_on_hyphens=False,
+        )
+
+    primary_size, secondary_size = (60, 46) if portrait else (80, 58)
+    line_step = round(primary_size * 1.45)
+    top = round(video_height * (0.16 if portrait else 0.12))
+    x = f"({safe_width}-text_w)/2+{left_margin}"
+    return [
+        TextOverlay(
+            text=line,
+            position=TextPosition.TOP_CENTER,
+            start_time=0.0,
+            end_time=min(3.0, duration),
+            style=TextStyle(
+                font_size=min(
+                    primary_size if index == 0 else secondary_size,
+                    max(24, (safe_width - 32) // len(line)),
+                ),
+                font_color="white" if index == 0 else "#FFE6A0",
+                outline_width=3,
+                shadow=True,
+                background_color="black@0.7",
+                background_padding=12,
+            ),
+            animation=TextAnimation.NONE,
+            layer=index,
+            x=x,
+            y=str(top + index * line_step),
+        )
+        for index, line in enumerate(lines)
+    ]
 
 
 def create_mid_video_overlay(
@@ -307,6 +384,12 @@ def create_pov_overlay(
 # =============================================================================
 
 
+def _escape_drawtext_text(text: str) -> str:
+    """Escape the drawtext option parser, then the outer filtergraph parser."""
+    option_escaped = "".join(f"\\{ch}" if ch in "\\:'" else ch for ch in text)
+    return "".join(f"\\{ch}" if ch in "\\,;[]'" else ch for ch in option_escaped)
+
+
 def position_to_xy(
     position: TextPosition, video_width: int = 1080, video_height: int = 1920
 ) -> tuple:
@@ -350,19 +433,29 @@ def overlay_to_ffmpeg_filter(
     Returns:
         FFmpeg filter string for drawtext
     """
-    x_expr, y_expr = position_to_xy(overlay.position, video_width, video_height)
-
-    # Escape special characters in text
-    escaped_text = overlay.text.replace("'", "'\\''").replace(":", "\\:")
+    default_x, default_y = position_to_xy(overlay.position, video_width, video_height)
+    x_expr = overlay.x if overlay.x is not None else default_x
+    y_expr = overlay.y if overlay.y is not None else default_y
 
     # Build filter components
     filter_parts = [
-        f"drawtext=text='{escaped_text}'",
+        f"drawtext=text={_escape_drawtext_text(overlay.text)}",
+        "expansion=none",
         f"fontsize={overlay.style.font_size}",
         f"fontcolor={overlay.style.font_color}",
         f"x={x_expr}",
         f"y={y_expr}",
+        "fix_bounds=1",
     ]
+
+    if overlay.style.background_color:
+        filter_parts.extend(
+            (
+                "box=1",
+                f"boxcolor={overlay.style.background_color}",
+                f"boxborderw={overlay.style.background_padding}",
+            )
+        )
 
     # Add outline/border
     if overlay.style.outline_width > 0:

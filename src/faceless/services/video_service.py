@@ -15,6 +15,11 @@ from faceless.config import get_settings
 from faceless.core.enums import Platform
 from faceless.core.exceptions import FFmpegError, VideoAssemblyError
 from faceless.core.models import Checkpoint, Scene, Script
+from faceless.core.text_overlay import (
+    TextOverlay,
+    create_opening_hook_overlays,
+    generate_overlay_filter_chain,
+)
 from faceless.utils.logging import LoggerMixin
 from faceless.utils.media import probe_media_duration
 
@@ -148,6 +153,8 @@ class VideoService(LoggerMixin):
         platform: Platform,
         output_path: Path,
         enable_ken_burns: bool = True,
+        overlays: list[TextOverlay] | None = None,
+        image_path: Path | None = None,
     ) -> Path:
         """
         Create a video for a single scene (image + audio).
@@ -157,6 +164,8 @@ class VideoService(LoggerMixin):
             platform: Target platform for resolution
             output_path: Path for output video
             enable_ken_burns: Enable zoom/pan effect
+            overlays: Optional timed text overlays to burn into the scene
+            image_path: Platform-specific image selected by the assembler, if any
 
         Returns:
             Path to created video
@@ -164,7 +173,8 @@ class VideoService(LoggerMixin):
         Raises:
             VideoAssemblyError: On assembly failure
         """
-        if not scene.image_path or not scene.image_path.exists():
+        selected_image = image_path if image_path is not None else scene.image_path
+        if not selected_image or not selected_image.is_file():
             raise VideoAssemblyError(
                 message=f"Image not found for scene {scene.scene_number}",
                 stage="scene_video",
@@ -178,6 +188,7 @@ class VideoService(LoggerMixin):
 
         width, height = platform.resolution
         duration = scene.duration_estimate
+        overlay_filters = generate_overlay_filter_chain(overlays or [], width, height)
 
         # Build filter for Ken Burns effect
         if enable_ken_burns:
@@ -186,21 +197,24 @@ class VideoService(LoggerMixin):
                 f"[0:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
                 f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
                 f"zoompan=z='min(zoom+0.0005,1.05)':d={int(duration * 25)}:s={width}x{height}:fps=25"
-                f"[v]"
             )
         else:
             filter_complex = (
                 f"[0:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
                 f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
-                f"loop=loop=-1:size=1:start=0[v]"
+                "loop=loop=-1:size=1:start=0"
             )
+
+        if overlay_filters:
+            filter_complex += f",{overlay_filters}"
+        filter_complex += "[v]"
 
         args = [
             "-y",  # Overwrite output
             "-loop",
             "1",  # Loop image
             "-i",
-            str(scene.image_path),  # Image input
+            str(selected_image),  # Image input
             "-i",
             str(scene.audio_path),  # Audio input
             "-filter_complex",
@@ -235,6 +249,41 @@ class VideoService(LoggerMixin):
         )
 
         return output_path
+
+    def _resolve_scene_image(
+        self,
+        scene: Scene,
+        platform: Platform,
+        images_dir: Path,
+    ) -> Path:
+        """Select the requested platform's image, even after another run overwrote image_path."""
+        filename = f"scene_{scene.scene_number:02d}_{platform.value}.png"
+        expected = images_dir / filename
+        if expected.is_file():
+            return expected
+
+        current = scene.image_path
+        if current is not None:
+            if current.name == filename and current.is_file():
+                return current
+
+            if any(
+                current.stem.endswith(f"_{known_platform.value}")
+                for known_platform in Platform
+            ):
+                sibling = current.with_name(filename)
+                if sibling.is_file():
+                    return sibling
+            elif current.is_file():
+                return current  # Legacy single-image scripts without platform suffixes.
+
+        raise VideoAssemblyError(
+            message=(
+                f"Image not found for scene {scene.scene_number} "
+                f"on {platform.value}: {expected}"
+            ),
+            stage="scene_video",
+        )
 
     def concatenate_scenes(
         self,
@@ -412,16 +461,17 @@ class VideoService(LoggerMixin):
             )
 
             # Skip if already done
-            if checkpoint and checkpoint.is_video_done(
-                platform.value, scene.scene_number
+            if (
+                checkpoint
+                and checkpoint.is_video_done(platform.value, scene.scene_number)
+                and scene_video_path.exists()
             ):
-                if scene_video_path.exists():
-                    self.logger.info(
-                        "Skipping existing scene video",
-                        scene_number=scene.scene_number,
-                    )
-                    scene_video_paths[scene.scene_number] = scene_video_path
-                    continue
+                self.logger.info(
+                    "Skipping existing scene video",
+                    scene_number=scene.scene_number,
+                )
+                scene_video_paths[scene.scene_number] = scene_video_path
+                continue
 
             scenes_to_process.append((scene, scene_video_path))
 
@@ -429,6 +479,13 @@ class VideoService(LoggerMixin):
         if scenes_to_process:
             max_concurrent = self._settings.max_concurrent_videos
             errors: list[str] = []
+            images_dir = self._settings.get_images_dir(script.niche) / script.safe_title
+            scene_images = {
+                scene.scene_number: self._resolve_scene_image(
+                    scene, platform, images_dir
+                )
+                for scene, _ in scenes_to_process
+            }
 
             self.logger.info(
                 "Starting parallel video scene creation",
@@ -436,69 +493,25 @@ class VideoService(LoggerMixin):
                 max_concurrent=max_concurrent,
             )
 
-            # Helper function for thread pool
-            def create_single_scene(
-                scene: Scene,
-                output_path: Path,
-            ) -> tuple[int, Path | None, str | None]:
-                """Create video for a single scene."""
-                try:
-                    width, height = platform.resolution
-                    duration = scene.duration_estimate
-
-                    # Build filter for Ken Burns effect
-                    if enable_ken_burns:
-                        filter_complex = (
-                            f"[0:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
-                            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
-                            f"zoompan=z='min(zoom+0.0005,1.05)':d={int(duration * 25)}:s={width}x{height}:fps=25"
-                            f"[v]"
-                        )
-                    else:
-                        filter_complex = (
-                            f"[0:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
-                            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
-                            f"loop=loop=-1:size=1:start=0[v]"
-                        )
-
-                    args = [
-                        "-y",
-                        "-loop",
-                        "1",
-                        "-i",
-                        str(scene.image_path),
-                        "-i",
-                        str(scene.audio_path),
-                        "-filter_complex",
-                        filter_complex,
-                        "-map",
-                        "[v]",
-                        "-map",
-                        "1:a",
-                        "-c:v",
-                        "libx264",
-                        "-preset",
-                        "medium",
-                        "-crf",
-                        "23",
-                        "-c:a",
-                        "aac",
-                        "-b:a",
-                        "192k",
-                        "-shortest",
-                        "-pix_fmt",
-                        "yuv420p",
-                        str(output_path),
-                    ]
-
-                    self._run_ffmpeg(args, f"Creating scene {scene.scene_number} video")
-                    return (scene.scene_number, output_path, None)
-                except Exception as e:
-                    return (scene.scene_number, None, str(e))
-
             with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
                 future_to_scene = {
-                    executor.submit(create_single_scene, scene, output_path): (
+                    executor.submit(
+                        self.create_scene_video,
+                        scene=scene,
+                        platform=platform,
+                        output_path=output_path,
+                        enable_ken_burns=enable_ken_burns,
+                        image_path=scene_images[scene.scene_number],
+                        overlays=(
+                            create_opening_hook_overlays(
+                                scene.narration,
+                                scene.duration_estimate,
+                                *platform.resolution,
+                            )
+                            if scene is script.scenes[0]
+                            else None
+                        ),
+                    ): (
                         scene,
                         output_path,
                     )
@@ -507,29 +520,24 @@ class VideoService(LoggerMixin):
 
                 for future in as_completed(future_to_scene):
                     scene, output_path = future_to_scene[future]
-                    scene_number, path, error = future.result()
-
-                    if path:
-                        scene.video_path = path
-                        scene_video_paths[scene_number] = path
-                        if checkpoint:
-                            checkpoint.mark_video_done(platform.value, scene_number)
-                        self.logger.info(
-                            "Created scene video",
-                            scene_number=scene_number,
-                            output=str(path),
-                        )
-                    else:
+                    try:
+                        path = future.result()
+                    except (FFmpegError, VideoAssemblyError) as e:
                         self.logger.error(
                             "Scene video creation failed",
-                            scene_number=scene_number,
-                            error=error,
+                            scene_number=scene.scene_number,
+                            error=str(e),
                         )
-                        errors.append(f"Scene {scene_number}: {error}")
+                        errors.append(f"Scene {scene.scene_number}: {e}")
+                        continue
+
+                    scene_video_paths[scene.scene_number] = path
+                    if checkpoint:
+                        checkpoint.mark_video_done(platform.value, scene.scene_number)
 
             if errors:
                 raise VideoAssemblyError(
-                    message=f"Failed to create {len(errors)} scene video(s)",
+                    message=f"Failed to create {len(errors)} scene video(s): {'; '.join(errors)}",
                     stage="scene_video",
                 )
 
